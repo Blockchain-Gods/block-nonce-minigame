@@ -12,6 +12,13 @@ class GameService {
       MIN_GRID_SIZE: 8,
       MAX_GRID_SIZE: 16, //change back to 16
       GAME_DURATION: 35000, // 35 seconds
+      LEVELS_PER_ROUND: 5,
+      // Difficulty increases with each level
+      DIFFICULTY_SCALING: {
+        GRID_SIZE_INCREMENT: 2, // Grid size increases by 2 each level
+        // BUG_INCREMENT: 1, // Number of bugs increases by 1 each level
+        TIME_DECREMENT: 5000, // Time decreases by 5 seconds each level
+      },
     };
   }
 
@@ -47,6 +54,10 @@ class GameService {
       startTime: Date.now(),
       isEnded: false,
       clickedCells: [],
+      currentRound: 1,
+      currentLevel: 1,
+      roundStats: [],
+      totalScore: 0,
     };
 
     this.gameStateManager.createGame(gameId, gameState);
@@ -54,14 +65,28 @@ class GameService {
   }
 
   generateGameConfig() {
-    const { MIN_BUGS, MAX_BUGS, MIN_GRID_SIZE, MAX_GRID_SIZE, GAME_DURATION } =
-      this.GAME_CONFIG;
+    const {
+      MIN_BUGS,
+      MAX_BUGS,
+      MIN_GRID_SIZE,
+      MAX_GRID_SIZE,
+      GAME_DURATION,
+      DIFFICULTY_SCALING,
+    } = this.GAME_CONFIG;
 
-    const gridSize =
-      Math.floor(Math.random() * (MAX_GRID_SIZE - MIN_GRID_SIZE + 1)) +
-      MIN_GRID_SIZE;
+    // Calculate difficulty based on level
+    const levelIndex = level - 1;
+    const gridSizeIncrease =
+      DIFFICULTY_SCALING.GRID_SIZE_INCREMENT * levelIndex;
+    const timeDecrease = DIFFICULTY_SCALING.TIME_DECREMENT * levelIndex;
+
+    const gridSize = Math.min(MIN_GRID_SIZE + gridSizeIncrease, MAX_GRID_SIZE);
     const numBugs =
       Math.floor(Math.random() * (MAX_BUGS - MIN_BUGS + 1)) + MIN_BUGS;
+    const duration = Math.max(
+      GAME_DURATION - timeDecrease,
+      15000 // Minimum 15 seconds
+    );
 
     // Generate unique bug positions
     const bugs = new Set();
@@ -76,6 +101,113 @@ class GameService {
       bugs: Array.from(bugs).map((bug) => JSON.parse(bug)),
       gameDuration: GAME_DURATION,
     };
+  }
+
+  async startLevel(gameId, address) {
+    const game = this.validateGameAccess(gameId, address);
+
+    if (game.currentLevel > this.GAME_CONFIG.LEVELS_PER_ROUND) {
+      throw new Error("Round is complete");
+    }
+
+    // Initialize level configuration
+    const gameConfig = this.generateGameConfig(game.currentLevel);
+
+    if (!address?.startsWith("guest_")) {
+      try {
+        await this.proofVerifier.setSecret(gameConfig.bugs.length);
+      } catch (error) {
+        throw new Error(
+          `Failed to initialize level verification: ${error.message}`
+        );
+      }
+    }
+
+    const updates = {
+      config: gameConfig,
+      startTime: Date.now(),
+      clickedCells: [],
+      isEnded: false,
+    };
+
+    this.gameStateManager.updateGame(gameId, updates);
+    this.setGameEndTimer(gameId, gameConfig.gameDuration);
+
+    return {
+      gameId,
+      gridSize: gameConfig.gridSize,
+      bugs: gameConfig.bugs,
+      numBugs: gameConfig.bugs.length,
+      startTime: updates.startTime,
+      duration: gameConfig.gameDuration / 1000,
+      currentLevel: game.currentLevel,
+      currentRound: game.currentRound,
+    };
+  }
+
+  async endLevel(gameId, endType = "timeout") {
+    const game = this.gameStateManager.getGame(gameId);
+    if (!game || game.isEnded) return null;
+
+    // Calculate level statistics
+    const bugsFound = game.clickedCells.filter((cell) =>
+      game.config.bugs.some((bug) => bug.x === cell.x && bug.y === cell.y)
+    ).length;
+
+    const levelScore = this.calculateLevelScore(
+      bugsFound,
+      game.config.bugs.length,
+      game.clickedCells.length
+    );
+
+    const levelResult = {
+      level: game.currentLevel,
+      bugsFound,
+      totalBugs: game.config.bugs.length,
+      clickedCells: game.clickedCells.length,
+      duration: Date.now() - game.startTime,
+      score: levelScore,
+    };
+
+    // Update game state with level results
+    const updates = {
+      isEnded: true,
+      currentLevel: game.currentLevel + 1,
+      roundStats: [...(game.roundStats || []), levelResult],
+      totalScore: (game.totalScore || 0) + levelScore,
+    };
+
+    // Check if round is complete
+    if (updates.currentLevel > this.GAME_CONFIG.LEVELS_PER_ROUND) {
+      updates.currentLevel = 1;
+      updates.currentRound = game.currentRound + 1;
+    }
+
+    this.gameStateManager.updateGame(gameId, updates);
+
+    // Emit level completion event
+    this.io.to(gameId).emit("levelEnded", {
+      gameId,
+      result: levelResult,
+      roundComplete: updates.currentLevel === 1,
+      currentRound: updates.currentRound,
+      totalScore: updates.totalScore,
+    });
+
+    return levelResult;
+  }
+
+  calculateLevelScore(bugsFound, totalBugs, totalClicks) {
+    const accuracy = bugsFound / totalBugs;
+    const efficiency = bugsFound / (totalClicks || 1);
+
+    // Base score calculation
+    let score = Math.floor(
+      accuracy * 1000 + // Up to 1000 points for finding all bugs
+        efficiency * 500 // Up to 500 points for efficiency
+    );
+
+    return Math.max(0, score); // Ensure score is not negative
   }
 
   async startGame(gameId, address) {

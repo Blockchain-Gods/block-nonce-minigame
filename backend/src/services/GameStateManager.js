@@ -9,16 +9,26 @@ class GameStateManager {
       throw new Error("GameId and gameState are required");
     }
 
-    this.activeGames.set(gameId, {
+    const initialGameState = {
       ...gameState,
       createdAt: Date.now(),
-    });
+      currentRound: 1,
+      currentLevel: 1,
+      roundStats: [],
+      totalScore: 0,
+      highestRound: 1,
+    };
+
+    this.activeGames.set(gameId, initialGameState);
 
     if (gameState.address) {
       this.activePlayerGames.set(gameState.address, gameId);
       const currentStats = this.playerStats.get(gameState.address) || {
         gamesPlayed: 0,
+        highestScore: 0,
+        highestRound: 1,
       };
+
       this.playerStats.set(gameState.address, {
         ...currentStats,
         gamesPlayed: currentStats.gamesPlayed + 1,
@@ -46,6 +56,32 @@ class GameStateManager {
       ...updates,
       updatedAt: Date.now(),
     };
+
+    // Update player stats if round or score changes
+    if (
+      game.address &&
+      (updates.currentRound > game.currentRound || updates.totalScore)
+    ) {
+      const playerStats = this.playerStats.get(game.address) || {
+        gamesPlayed: 1,
+        highestScore: 0,
+        highestRound: 1,
+      };
+
+      const newStats = {
+        ...playerStats,
+        highestScore: Math.max(
+          playerStats.highestScore,
+          updates.totalScore || 0
+        ),
+        highestRound: Math.max(
+          playerStats.highestRound,
+          updates.currentRound || 1
+        ),
+      };
+
+      this.playerStats.set(game.address, newStats);
+    }
 
     this.activeGames.set(gameId, updatedGame);
     return { ...updatedGame };
@@ -105,7 +141,13 @@ class GameStateManager {
 
   getPlayerStats(address) {
     console.log(`GS address: ${address}`);
-    return this.playerStats.get(address) || { gamesPlayed: 0 };
+    return (
+      this.playerStats.get(address) || {
+        gamesPlayed: 0,
+        highestScore: 0,
+        highestRound: 1,
+      }
+    );
   }
 }
 
