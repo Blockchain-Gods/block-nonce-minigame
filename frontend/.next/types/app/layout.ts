@@ -1,4 +1,4 @@
-// File: /Users/nishantpandav/Documents/work/_startups/Blockchain Gods/game/aligned layer hackathon/block-nonce-minigame/frontend/app/layout.tsx
+// File: /Users/nishantpandav/Documents/work/_startups/Blockchain Gods/game/hackathons/aligned layer hackathon/block-nonce-minigame/frontend/app/layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

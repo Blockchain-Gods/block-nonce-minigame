@@ -40,10 +40,35 @@ function setupGameRoutes(gameService, io) {
     const { address } = req.body;
     console.log("Router trying to start the game");
     try {
-      const gameData = await gameService.startGame(gameId, address);
-      res.json(gameData);
+      const game = gameService.gameStateManager.getGame(gameId);
+      if (!game) {
+        throw new Error("Game not found");
+      }
+
+      const gameData = await gameService.startLevel(gameId, address);
+
+      console.log(`Game Data: ${JSON.stringify(gameData)}`);
+      res.json({
+        ...gameData,
+        currentRound: game.currentRound,
+        currentLevel: game.currentLevel,
+        totalScore: game.totalScore || 0,
+      });
     } catch (error) {
       console.error(`Error starting game: ${error.message}`);
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  router.post("/start-level/:gameId", async (req, res) => {
+    const { gameId } = req.params;
+    const { address } = req.body;
+
+    try {
+      const gameData = await gameService.startLevel(gameId, address);
+      res.json(gameData);
+    } catch (error) {
+      console.error(`Error starting level: ${error.message}`);
       res.status(400).json({ error: error.message });
     }
   });
@@ -60,20 +85,43 @@ function setupGameRoutes(gameService, io) {
     }
   });
 
-  // End game manually
+  // End current level
+  router.post("/end-level", async (req, res) => {
+    const { gameId, address } = req.body;
+
+    try {
+      const result = await gameService.endLevel(gameId, "manual");
+
+      // Emit level ended event
+      io.to(gameId).emit("levelEnded", {
+        gameId,
+        result,
+        roundComplete: result.currentLevel === 1,
+        currentRound: result.currentRound,
+      });
+
+      res.json({
+        success: true,
+        gameId,
+        result,
+      });
+    } catch (error) {
+      console.error(`Error ending level for game ${gameId}:`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // End entire game
   router.post("/end-game", async (req, res) => {
     const { gameId, address } = req.body;
 
     try {
       const result = await gameService.endGame(gameId, "manual");
 
-      // Emit game ended event through socket
-      console.log(`About to emit gameEnded event for game ${gameId}`);
       io.to(gameId).emit("gameEnded", {
         gameId,
         result,
       });
-      console.log("Event emitted");
 
       res.json({
         success: true,
@@ -130,7 +178,13 @@ function setupGameRoutes(gameService, io) {
 
     try {
       const game = gameService.validateGameAccess(gameId, address);
-      res.json(game);
+      res.json({
+        ...game,
+        currentRound: game.currentRound || 1,
+        currentLevel: game.currentLevel || 1,
+        totalScore: game.totalScore || 0,
+        roundStats: game.roundStats || [],
+      });
     } catch (error) {
       res
         .status(error.message.includes("Not authorized") ? 403 : 404)

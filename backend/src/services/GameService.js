@@ -64,7 +64,8 @@ class GameService {
     return gameId;
   }
 
-  generateGameConfig() {
+  generateGameConfig(level = 1) {
+    // Add default parameter
     const {
       MIN_BUGS,
       MAX_BUGS,
@@ -99,19 +100,29 @@ class GameService {
     return {
       gridSize,
       bugs: Array.from(bugs).map((bug) => JSON.parse(bug)),
-      gameDuration: GAME_DURATION,
+      gameDuration: duration, // Use the calculated duration instead of GAME_DURATION
     };
   }
 
   async startLevel(gameId, address) {
     const game = this.validateGameAccess(gameId, address);
 
+    // Initialize level and round if not defined
+    if (!game.currentLevel) {
+      game.currentLevel = 1;
+    }
+    if (!game.currentRound) {
+      game.currentRound = 1;
+    }
+
     if (game.currentLevel > this.GAME_CONFIG.LEVELS_PER_ROUND) {
       throw new Error("Round is complete");
     }
 
     // Initialize level configuration
+    console.log(`Initializing level config for level ${game.currentLevel}`);
     const gameConfig = this.generateGameConfig(game.currentLevel);
+    console.log(`Level config: ${JSON.stringify(gameConfig)}`);
 
     if (!address?.startsWith("guest_")) {
       try {
@@ -128,6 +139,8 @@ class GameService {
       startTime: Date.now(),
       clickedCells: [],
       isEnded: false,
+      currentLevel: game.currentLevel,
+      currentRound: game.currentRound,
     };
 
     this.gameStateManager.updateGame(gameId, updates);
