@@ -63,8 +63,8 @@ function setupGameRoutes(gameService, io) {
   router.post("/start-level/:gameId", async (req, res) => {
     const { gameId } = req.params;
     const { address } = req.body;
-
     try {
+      console.log("Starting level");
       const gameData = await gameService.startLevel(gameId, address);
       res.json(gameData);
     } catch (error) {
@@ -90,10 +90,11 @@ function setupGameRoutes(gameService, io) {
     const { gameId, address } = req.body;
 
     try {
+      console.log("Ending level");
       const result = await gameService.endLevel(gameId, "manual");
 
       // Emit level ended event
-      io.to(gameId).emit("levelEnded", {
+      io.to(gameId).emit(`levelEnded_${gameId}`, {
         gameId,
         result,
         roundComplete: result.currentLevel === 1,

@@ -122,6 +122,28 @@ export const joinGameRoom = (gameId: string) => {
   }
 };
 
+export const setupLevelEndListener = (
+  gameId: string,
+  callback: (data: any) => void
+) => {
+  if (socket) {
+    console.log("Level ended");
+    socket.on(`levelEnded_${gameId}`, callback);
+  }
+};
+
+export const endLevel = async (gameId: string, address: string) => {
+  try {
+    const response = await apiClient.post<GameResponse>("/end-level", {
+      gameId,
+      address,
+    });
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+};
+
 export const setupGameEndListener = (
   gameId: string,
   onGameEnd: (data: GameEndData) => void

@@ -10,16 +10,18 @@ import { useGameStatePolling } from "@/hooks/useGameStatePolling";
 import { useRemainingTime } from "@/hooks/useRemainingTime";
 import { LoadingComponent } from "@/components/LoadingComponent";
 import { useEffect, useState } from "react";
-import { Position } from "@/types/game";
+import { LevelStat, Position } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import {
   cleanupGameListeners,
   clickCell,
   endGame,
   endGameWithFullVerification,
+  endLevel,
   getPlayerStats,
   initializeSocket,
   setupGameEndListener,
+  setupLevelEndListener,
 } from "@/lib/api";
 import IsometricGrid from "@/components/IsometricGrid";
 import {
@@ -36,13 +38,15 @@ import {
 import { useGameCreation } from "@/hooks/useGameCreation";
 import { SwishSpinner } from "@/components/SwishSpinner";
 import Cookies from "js-cookie";
-import { json } from "stream/consumers";
+import RoundSummary from "@/components/RoundSummary";
 
 export default function GamePage() {
   const { startGuestGame, startWeb3Game, isLoading } = useGameCreation();
   const { gameId } = useParams() as { gameId: string };
   const { address } = useAccount();
   const { toast } = useToast();
+
+  // State
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [resultBugs, setResultBugs] = useState(0);
   const [verificationInProg, setVerificationInProg] = useState(false);
@@ -58,6 +62,12 @@ export default function GamePage() {
   const [isEnding, setIsEnding] = useState(false);
   const [playerIsGuest, setPlayerIsGuest] = useState(false);
 
+  // New round-related state
+  const [currentRound, setCurrentRound] = useState(1);
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [roundStats, setRoundStats] = useState<LevelStat[]>([]);
+  const [showRoundSummary, setShowRoundSummary] = useState(false);
+
   // Initialize playerIdentifier on mount
   useEffect(() => {
     const guestId = Cookies.get("guestId");
@@ -69,20 +79,18 @@ export default function GamePage() {
     }
   }, [address]);
 
-  // Initialize game and get configuration
+  // Game initialization and state polling
   const {
     gameConfig,
     error: initError,
     initializeGame,
   } = useGameInitialization(playerIdentifier, gameId);
 
-  // Poll game state
   const { gameState, isRunning } = useGameStatePolling(
     playerIdentifier!,
     gameId
   );
 
-  // Calculate remaining time
   const remainingTime = useRemainingTime(
     gameConfig?.startTime,
     gameConfig?.duration
@@ -114,54 +122,54 @@ export default function GamePage() {
     }
   }, [playerIdentifier, gameId]);
 
+  // Setup socket listeners
   useEffect(() => {
-    // Initialize socket connection
     const socket = initializeSocket();
+
+    // Setup level end listener
+    setupLevelEndListener(gameId, (data) => {
+      const { result, roundComplete } = data;
+
+      if (roundComplete) {
+        setShowRoundSummary(true);
+        setCurrentRound((prev) => prev + 1);
+        setCurrentLevel(1);
+      } else {
+        setCurrentLevel((prev) => prev + 1);
+      }
+
+      setRoundStats((prev) => [...prev, result]);
+    });
 
     // Setup game end listener
     setupGameEndListener(gameId, (data) => {
-      if (data.result.endType === "timeout") {
-        console.log("Game ended due to timeout");
-      } else {
-        console.log("Game ended manually");
-      }
-
-      console.log(`Found ${data.result.bugsFound} bugs`);
-      // console.log(`Data from FE: ${JSON.stringify(data)}`);
       setVerificationInProg(data.result.verificationInProgress);
       setEndType(data.result.endType);
       setProofIsVerified(data.result.proofVerified);
       setResultBugs(data.result.bugsFound);
     });
 
-    // Cleanup on component unmount
     return () => {
       cleanupGameListeners(gameId);
     };
   }, [gameId]);
 
-  const handleEndGame = async () => {
+  const handleEndLevel = async () => {
     if (!playerIdentifier || !gameId) return;
 
     try {
       setIsEnding(true);
-      const result = await endGame(gameId, playerIdentifier);
+      const result = await endLevel(gameId, playerIdentifier);
 
-      if (result.success) {
-        console.log("Successfully ended the game");
-        // toast({
-        //   title: "Game Ending",
-        //   description: "Your game results are being processed...",
-        // });
-      }
+      console.log(`Game result: ${JSON.stringify(result)}`);
     } catch (error: any) {
-      console.error("Error ending game:", error);
+      console.error("Error ending level:", error);
       setIsEnding(false);
-      // toast({
-      //   variant: "destructive",
-      //   title: "Failed to end game",
-      //   description: error?.response?.data?.error || "Please try again",
-      // });
+      toast({
+        variant: "destructive",
+        title: "Failed to end level",
+        description: error?.response?.data?.error || "Please try again",
+      });
     }
   };
 
@@ -189,6 +197,12 @@ export default function GamePage() {
     } finally {
       setIsFullVerifying(false);
     }
+  };
+
+  const handleContinueToNextRound = () => {
+    setShowRoundSummary(false);
+    setRoundStats([]);
+    initializeGame(); // Start the first level of the new round
   };
 
   if (!gameConfig) {
@@ -229,57 +243,65 @@ export default function GamePage() {
 
   return (
     <main className="flex flex-col items-center justify-center">
-      <div className="w-full p-4 flex justify-end">
+      <div className="w-full p-4 flex justify-between items-center">
+        <div className="text-[#6123ff]">
+          <span>Round {currentRound}</span>
+          <span className="mx-2">•</span>
+          <span>Level {currentLevel}</span>
+        </div>
         <ConnectButton showBalance={false} />
       </div>
+
+      {/* Game Content */}
       {gameConfig && (
-        <>
-          <div className="relative ">
-            <div className="w-max absolute left-[146px] top-[6px]">
-              <div className="text-start text-4xl text-[#6123ff] flex flex-col">
-                <p className="text-xs leading-none">Block No.:</p>
-                <p className="font-bold leading-none">{gamesPlayed}</p>
-              </div>
-            </div>
-            <div className="w-full bottom-3 absolute justify-center text-center text-[#6123ff]">
-              <div>
-                <button
-                  onClick={handleEndGame}
-                  disabled={isEnding || !isRunning}
-                  className="font-bold! text-lg hover:text-white hover:drop-shadow-[0px_0px_5px_#6123ff] px-10 leading-none"
-                >
-                  Verify my Guess &rsaquo;
-                </button>
-              </div>
-            </div>
-            <CountdownTimer
-              remainingTime={remainingTime.remainingTime}
-              onTimerEnd={() => {}}
-              isRunning={isRunning}
-            />
-            <IsometricGrid
-              // gridSize={Math.round(gameConfig.gridSize / 2)}
-              gridSize={7}
-              squareSize={26}
-              startTime={gameConfig.startTime}
-              totalTime={gameConfig.duration}
-              remainingTime={remainingTime.remainingTime}
-              updateInterval={1}
-              className=""
-            />
-            <div className="bg-[url('/grid-bg.png')] bg-contain bg-center bg-no-repeat px-20 pt-32 pb-20">
-              <GridGame
-                gridSize={gameConfig.gridSize}
-                onCellReveal={handleCellReveal}
-                enemyPositions={gameConfig.bugs}
-                gameId={gameId}
-                address={address!}
-              />
+        <div className="relative">
+          <div className="w-max absolute left-[146px] top-[6px]">
+            <div className="text-start text-4xl text-[#6123ff] flex flex-col">
+              <p className="text-xs leading-none">Block No.:</p>
+              <p className="font-bold leading-none">{gamesPlayed}</p>
             </div>
           </div>
-        </>
+
+          <div className="w-full bottom-3 absolute justify-center text-center text-[#6123ff]">
+            <div>
+              <button
+                onClick={handleEndLevel}
+                disabled={isEnding || !isRunning}
+                className="font-bold! text-lg hover:text-white hover:drop-shadow-[0px_0px_5px_#6123ff] px-10 leading-none"
+              >
+                Verify my Guess &rsaquo;
+              </button>
+            </div>
+          </div>
+
+          <CountdownTimer
+            remainingTime={remainingTime.remainingTime}
+            onTimerEnd={() => {}}
+            isRunning={isRunning}
+          />
+
+          <IsometricGrid
+            gridSize={7}
+            squareSize={26}
+            startTime={gameConfig.startTime}
+            totalTime={gameConfig.duration}
+            remainingTime={remainingTime.remainingTime}
+            updateInterval={1}
+            className=""
+          />
+          <div className="bg-[url('/grid-bg.png')] bg-contain bg-center bg-no-repeat px-20 pt-32 pb-20">
+            <GridGame
+              gridSize={gameConfig.gridSize}
+              onCellReveal={handleCellReveal}
+              enemyPositions={gameConfig.bugs}
+              gameId={gameId}
+              address={address!}
+            />
+          </div>
+        </div>
       )}
 
+      {/* Level End Dialog */}
       <AlertDialog open={remainingTime.remainingTime === 0 || isEnding}>
         <AlertDialogContent className="bg-[#161525] border-2 border-[#5b23d4] w-1/3">
           <AlertDialogHeader>
@@ -365,16 +387,13 @@ export default function GamePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Round Summary Dialog */}
+      {showRoundSummary && (
+        <RoundSummary
+          roundStats={roundStats}
+          onContinue={handleContinueToNextRound}
+        />
+      )}
     </main>
   );
-}
-
-{
-  /* <IsometricGrid
-            gridSize={gridSize}
-            squareSize={35}
-            initialTime={duration}
-            updateInterval={2}
-            isRunning={gameIsRunning}
-          /> */
 }

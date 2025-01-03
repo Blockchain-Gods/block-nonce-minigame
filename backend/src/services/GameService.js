@@ -159,6 +159,7 @@ class GameService {
   }
 
   async endLevel(gameId, endType = "timeout") {
+    console.log("Ending level");
     const game = this.gameStateManager.getGame(gameId);
     if (!game || game.isEnded) return null;
 
@@ -166,7 +167,7 @@ class GameService {
     const bugsFound = game.clickedCells.filter((cell) =>
       game.config.bugs.some((bug) => bug.x === cell.x && bug.y === cell.y)
     ).length;
-
+    console.log(`Bugs found: ${bugsFound}`);
     const levelScore = this.calculateLevelScore(
       bugsFound,
       game.config.bugs.length,
@@ -280,7 +281,7 @@ class GameService {
 
     game.timeoutId = setTimeout(async () => {
       try {
-        await this.endGame(gameId, "timeout");
+        await this.endLevel(gameId, "timeout");
       } catch (error) {
         console.error(`Error ending game ${gameId}:`, error);
       }
@@ -300,7 +301,7 @@ class GameService {
   }
 
   async endGame(gameId, endType = "timeout") {
-    console.log("Ending game");
+    console.log(`Ending game with endType = ${endType}`);
     const game = this.gameStateManager.getGame(gameId);
     if (!game || game.isEnded) return null;
 
