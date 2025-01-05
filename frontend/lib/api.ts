@@ -190,6 +190,7 @@ export const startGame = async (
     const response = await apiClient.post<GameConfig>(`/start-game/${gameId}`, {
       address: playerAddress,
     });
+
     joinGameRoom(gameId);
     return response.data;
   } catch (error) {
@@ -206,6 +207,7 @@ export const getGameState = async (
     const response = await apiClient.get<GameState>(`/game-state/${gameId}`, {
       params: { address: playerAddress },
     });
+
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -291,6 +293,7 @@ export const getPlayerStats = async (address: string): Promise<PlayerStats> => {
     const response = await apiClient.get<PlayerStats>(`/stats/`, {
       params: { address: playerAddress },
     });
+
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);

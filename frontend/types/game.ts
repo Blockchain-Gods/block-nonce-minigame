@@ -5,14 +5,59 @@ export interface GameConfig {
   bugs: Position[];
 }
 
-export interface GameState {
-  isEnded: boolean;
-  remainingTime: number;
-  clickedCells: Position[];
+export interface GameConfigShort {
   gridSize: number;
-  startTime?: number;
-  duration?: number;
-  bugs?: Position[];
+  bugs: Position[];
+  gameDuration: number;
+}
+// export interface GameState {
+//   isEnded: boolean;
+//   remainingTime: number;
+//   clickedCells: Position[];
+//   gridSize: number;
+//   startTime?: number;
+//   duration?: number;
+//   bugs?: Position[];
+// }
+
+// export interface GameState {
+//   startTime: number;
+//   isEnded: boolean;
+//   clickedCells: Position[];
+//   currentRound: number;
+//   currentLevel: number;
+//   roundStats: any[]; // TODO: update
+//   totalScore: number;
+//   createdAt: number;
+//   highestRound: number;
+// }
+
+export interface GameData {
+  gameId: string;
+  gridSize: number;
+  bugs: Position[];
+  numBugs: number;
+  startTime: number;
+  duration: number;
+  currentLevel: number;
+  currentRound: number;
+  totalScore: number;
+}
+
+export interface GameState {
+  address?: string;
+  startTime: number;
+  isEnded: boolean;
+  clickedCells: Position[];
+  currentRound: number;
+  currentLevel: number;
+  roundStats: any[];
+  totalScore: number;
+  createdAt: number;
+  highestRound: number;
+  config?: GameConfigShort;
+  endTime?: number;
+  updatedAt?: number;
 }
 
 export interface Position {
@@ -22,6 +67,8 @@ export interface Position {
 
 export interface PlayerStats {
   gamesPlayed: number;
+  highestScore: number;
+  highestRound: number;
 }
 
 export interface GameEndData {

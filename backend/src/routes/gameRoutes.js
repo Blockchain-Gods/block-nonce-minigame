@@ -47,7 +47,6 @@ function setupGameRoutes(gameService, io) {
 
       const gameData = await gameService.startLevel(gameId, address);
 
-      console.log(`Game Data: ${JSON.stringify(gameData)}`);
       res.json({
         ...gameData,
         currentRound: game.currentRound,
@@ -90,7 +89,7 @@ function setupGameRoutes(gameService, io) {
     const { gameId, address } = req.body;
 
     try {
-      console.log("Ending level");
+      console.log("GRou Ending level");
       const result = await gameService.endLevel(gameId, "manual");
 
       // Emit level ended event
@@ -179,6 +178,8 @@ function setupGameRoutes(gameService, io) {
 
     try {
       const game = gameService.validateGameAccess(gameId, address);
+
+      console.log(`Router stats: ${JSON.stringify(game)} `);
       res.json({
         ...game,
         currentRound: game.currentRound || 1,

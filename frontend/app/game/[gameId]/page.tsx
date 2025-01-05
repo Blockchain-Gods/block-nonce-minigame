@@ -159,9 +159,8 @@ export default function GamePage() {
 
     try {
       setIsEnding(true);
-      const result = await endLevel(gameId, playerIdentifier);
-
-      console.log(`Game result: ${JSON.stringify(result)}`);
+      await endLevel(gameId, playerIdentifier);
+      setIsEnding(false);
     } catch (error: any) {
       console.error("Error ending level:", error);
       setIsEnding(false);
@@ -202,6 +201,7 @@ export default function GamePage() {
   const handleContinueToNextRound = () => {
     setShowRoundSummary(false);
     setRoundStats([]);
+    setIsEnding(false);
     initializeGame(); // Start the first level of the new round
   };
 
@@ -379,7 +379,7 @@ export default function GamePage() {
           <AlertDialogFooter className="m-auto">
             <AlertDialogAction
               className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
-              onClick={address ? startWeb3Game : startGuestGame}
+              onClick={handleContinueToNextRound}
               disabled={verificationInProg || isFullVerifying}
             >
               {isLoading ? "Starting..." : "Next Block ›"}

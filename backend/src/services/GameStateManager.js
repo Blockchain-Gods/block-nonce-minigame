@@ -106,6 +106,10 @@ class GameStateManager {
       throw new Error("Game not found");
     }
 
+    if (game.timeoutId) {
+      clearTimeout(game.timeoutId);
+    }
+
     const updatedGame = {
       ...game,
       isEnded: true,

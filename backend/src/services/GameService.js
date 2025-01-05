@@ -64,7 +64,7 @@ class GameService {
     return gameId;
   }
 
-  generateGameConfig(level = 1) {
+  generateGameConfig(level) {
     // Add default parameter
     const {
       MIN_BUGS,
@@ -133,10 +133,11 @@ class GameService {
         );
       }
     }
-
+    const startTime = Date.now();
     const updates = {
       config: gameConfig,
-      startTime: Date.now(),
+      startTime,
+      endTime: startTime + gameConfig.gameDuration,
       clickedCells: [],
       isEnded: false,
       currentLevel: game.currentLevel,
@@ -159,7 +160,7 @@ class GameService {
   }
 
   async endLevel(gameId, endType = "timeout") {
-    console.log("Ending level");
+    console.log("GSer Ending level");
     const game = this.gameStateManager.getGame(gameId);
     if (!game || game.isEnded) return null;
 
@@ -290,9 +291,10 @@ class GameService {
 
   async handleClick(gameId, x, y, address) {
     const game = this.validateGameAccess(gameId, address);
+    const timePassed = Date.now() - game.startTime;
 
-    if (game.isEnded) {
-      throw new Error("Game has already ended");
+    if (game.isEnded || timePassed >= game.config.gameDuration) {
+      throw new Error("Level has ended");
     }
     console.log(`Player clicked ${x}, ${y}`);
     game.clickedCells.push({ x, y });

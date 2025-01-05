@@ -23,7 +23,12 @@ export const useGameStatePolling = (
     try {
       const state = await getGameState(playerIdentifier, gameId);
       setGameState(state);
-      setIsRunning(!state.isEnded);
+
+      // Check if level time has expired
+      const timePassed = Date.now() - state.startTime;
+      const isExpired = timePassed >= state.config?.gameDuration!;
+
+      setIsRunning(!state.isEnded && !isExpired);
       setError(null);
 
       if (state.isEnded && intervalRef.current) {

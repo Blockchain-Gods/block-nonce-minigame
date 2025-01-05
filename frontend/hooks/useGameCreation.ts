@@ -46,11 +46,15 @@ export function useGameCreation() {
       setIsLoading(false);
     }
   };
+  const continueToNextLevel = () => {
+    setIsLoading(false);
+  };
 
   return {
     startNewGame,
     startGuestGame: () => startNewGame(true),
     startWeb3Game: () => startNewGame(false),
+    continueToNextLevel,
     isLoading,
   };
 }
