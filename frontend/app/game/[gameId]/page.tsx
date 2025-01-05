@@ -125,10 +125,16 @@ export default function GamePage() {
   // Setup socket listeners
   useEffect(() => {
     const socket = initializeSocket();
-
     // Setup level end listener
     setupLevelEndListener(gameId, (data) => {
+      if (!data || !data.result) {
+        console.error("Invalid level end data received");
+        return;
+      }
+
       const { result, roundComplete } = data;
+
+      setIsEnding(true);
 
       if (roundComplete) {
         setShowRoundSummary(true);

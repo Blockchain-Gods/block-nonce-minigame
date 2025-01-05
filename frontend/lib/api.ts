@@ -128,7 +128,7 @@ export const setupLevelEndListener = (
 ) => {
   if (socket) {
     console.log("Level ended");
-    socket.on(`levelEnded_${gameId}`, callback);
+    socket.on(`levelEnded`, callback);
   }
 };
 
