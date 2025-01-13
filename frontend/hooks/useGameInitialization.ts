@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useToast } from "./use-toast";
-import { getGameState, startGame } from "@/lib/api";
+import { getGameState, startGame, startLevel } from "@/lib/api";
 import { GameConfig, GameState } from "@/types/game";
 import { ApiError } from "@/lib/api";
 
@@ -8,6 +8,7 @@ interface UseGameInitializationReturn {
   gameConfig: GameConfig | null;
   error: string | null;
   initializeGame: () => Promise<void>;
+  initializeLevel: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -26,20 +27,21 @@ export const useGameInitialization = (
     console.log("Trying to get existing game");
     try {
       const existingGame = await getGameState(playerIdentifier, gameId);
-      // console.log(`info: ${JSON.stringify(existingGame)}`);
+
       if (existingGame) {
         if (
           existingGame.startTime !== undefined &&
-          existingGame.duration !== undefined &&
-          existingGame.gridSize !== undefined &&
-          existingGame.bugs !== undefined
+          existingGame.config?.gameDuration !== undefined &&
+          existingGame.config?.gridSize !== undefined &&
+          existingGame.config?.bugs !== undefined
         ) {
           const config: GameConfig = {
             startTime: existingGame.startTime,
-            duration: existingGame.duration,
-            gridSize: existingGame.gridSize,
-            bugs: existingGame.bugs,
+            duration: existingGame.config?.gameDuration,
+            gridSize: existingGame.config?.gridSize,
+            bugs: existingGame.config?.bugs,
           };
+          console.log(`game config: ${JSON.stringify(config)}`);
           setGameConfig(config);
           return;
         }
@@ -69,5 +71,34 @@ export const useGameInitialization = (
     }
   };
 
-  return { gameConfig, error, initializeGame, isLoading };
+  const initializeLevel = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const levelData = await startLevel(playerIdentifier, gameId);
+      const config: GameConfig = {
+        startTime: levelData.startTime,
+        duration: levelData.duration,
+        gridSize: levelData.gridSize,
+        bugs: levelData.bugs,
+      };
+      setGameConfig(config);
+    } catch (error) {
+      const errorMessage =
+        error instanceof ApiError
+          ? error.message
+          : "Failed to initialize level";
+      setError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return { gameConfig, error, initializeGame, initializeLevel, isLoading };
 };

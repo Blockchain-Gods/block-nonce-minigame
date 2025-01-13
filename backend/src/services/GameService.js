@@ -12,7 +12,7 @@ class GameService {
       MIN_GRID_SIZE: 8,
       MAX_GRID_SIZE: 16, //change back to 16
       GAME_DURATION: 35000, // 35 seconds
-      LEVELS_PER_ROUND: 5,
+      LEVELS_PER_ROUND: 2,
       // Difficulty increases with each level
       DIFFICULTY_SCALING: {
         GRID_SIZE_INCREMENT: 2, // Grid size increases by 2 each level
@@ -162,6 +162,7 @@ class GameService {
   async endLevel(gameId, endType = "timeout") {
     console.log("GSer Ending level");
     const game = this.gameStateManager.getGame(gameId);
+    console.log(`GSer game details: ${JSON.stringify(game)}`);
     if (!game || game.isEnded) return null;
 
     // Calculate level statistics

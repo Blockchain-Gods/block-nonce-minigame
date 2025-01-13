@@ -57,6 +57,8 @@ export const useGameStatePolling = (
     };
   }, [fetchGameState, pollInterval]);
 
+  // console.log(`Game State from hook: ${JSON.stringify(gameState)}`);
+
   return {
     gameState,
     isRunning,

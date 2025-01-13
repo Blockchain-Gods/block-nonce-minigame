@@ -51,7 +51,7 @@ export interface GameState {
   clickedCells: Position[];
   currentRound: number;
   currentLevel: number;
-  roundStats: any[];
+  roundStats: LevelStat[];
   totalScore: number;
   createdAt: number;
   highestRound: number;

@@ -132,8 +132,26 @@ export const setupLevelEndListener = (
   }
 };
 
+export const startLevel = async (
+  address: string,
+  gameId: string
+): Promise<GameConfig> => {
+  try {
+    const response = await apiClient.post<GameConfig>(
+      `/start-level/${gameId}`,
+      {
+        address,
+      }
+    );
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+};
+
 export const endLevel = async (gameId: string, address: string) => {
   try {
+    console.log(`End level: ${gameId}`);
     const response = await apiClient.post<GameResponse>("/end-level", {
       gameId,
       address,

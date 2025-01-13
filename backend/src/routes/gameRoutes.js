@@ -91,7 +91,7 @@ function setupGameRoutes(gameService, io) {
     try {
       console.log("GRou Ending level");
       const result = await gameService.endLevel(gameId, "manual");
-
+      console.log(`GRou ending result: ${JSON.stringify(result)}`);
       // Emit level ended event
       io.to(gameId).emit(`levelEnded_${gameId}`, {
         gameId,

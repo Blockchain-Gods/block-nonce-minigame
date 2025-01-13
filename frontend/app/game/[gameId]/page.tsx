@@ -49,8 +49,9 @@ export default function GamePage() {
   // State
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [resultBugs, setResultBugs] = useState(0);
+  // const [playerGotAllBugs, setPlayerGotAllBugs] = useState(false);
   const [verificationInProg, setVerificationInProg] = useState(false);
-  const [proofIsVerified, setProofIsVerified] = useState(false);
+  const [proofIsVerified, setProofIsVerified] = useState(true); // TODO: change after actual implementation
   const [endType, setEndType] = useState("manual");
   const [isFullVerifying, setIsFullVerifying] = useState(false);
   const [fullVerificationResult, setFullVerificationResult] = useState<{
@@ -61,10 +62,12 @@ export default function GamePage() {
   const [playerIdentifier, setPlayerIdentifier] = useState<string>("");
   const [isEnding, setIsEnding] = useState(false);
   const [playerIsGuest, setPlayerIsGuest] = useState(false);
+  const [showLevelSummary, setShowLevelSummary] = useState(false);
 
   // New round-related state
   const [currentRound, setCurrentRound] = useState(1);
   const [currentLevel, setCurrentLevel] = useState(1);
+  const [levelStats, setLevelStats] = useState<LevelStat>();
   const [roundStats, setRoundStats] = useState<LevelStat[]>([]);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
 
@@ -84,13 +87,11 @@ export default function GamePage() {
     gameConfig,
     error: initError,
     initializeGame,
+    initializeLevel,
   } = useGameInitialization(playerIdentifier, gameId);
 
-  const { gameState, isRunning } = useGameStatePolling(
-    playerIdentifier!,
-    gameId
-  );
-
+  const { gameState } = useGameStatePolling(playerIdentifier!, gameId);
+  // console.log(`Game state from page: ${JSON.stringify(gameState)}`);
   const remainingTime = useRemainingTime(
     gameConfig?.startTime,
     gameConfig?.duration
@@ -124,23 +125,26 @@ export default function GamePage() {
 
   // Setup socket listeners
   useEffect(() => {
-    const socket = initializeSocket();
+    initializeSocket();
     // Setup level end listener
     setupLevelEndListener(gameId, (data) => {
       if (!data || !data.result) {
         console.error("Invalid level end data received");
         return;
       }
-
+      // console.log(`Level data: \n${JSON.stringify(data)}`);
       const { result, roundComplete } = data;
-
+      setLevelStats(result);
+      setShowLevelSummary(true);
       setIsEnding(true);
 
       if (roundComplete) {
-        setShowRoundSummary(true);
+        // setShowRoundSummary(true);
+        // TODO: Use data from server
         setCurrentRound((prev) => prev + 1);
         setCurrentLevel(1);
       } else {
+        // TODO: Use data from server
         setCurrentLevel((prev) => prev + 1);
       }
 
@@ -159,6 +163,10 @@ export default function GamePage() {
       cleanupGameListeners(gameId);
     };
   }, [gameId]);
+
+  console.log(
+    `Level Stats outside useEffect: \n ${JSON.stringify(levelStats)}`
+  );
 
   const handleEndLevel = async () => {
     if (!playerIdentifier || !gameId) return;
@@ -211,6 +219,14 @@ export default function GamePage() {
     initializeGame(); // Start the first level of the new round
   };
 
+  const handleContinueToNextLevel = () => {
+    setShowRoundSummary(false);
+    setShowLevelSummary(false);
+    setRoundStats([]);
+    setIsEnding(false);
+    initializeLevel();
+  };
+
   if (!gameConfig) {
     return (
       <div className="h-[100vh] flex items-center">
@@ -253,7 +269,7 @@ export default function GamePage() {
         <div className="text-[#6123ff]">
           <span>Round {currentRound}</span>
           <span className="mx-2">•</span>
-          <span>Level {currentLevel}</span>
+          <span>Level {gameState?.currentLevel}</span>
         </div>
         <ConnectButton showBalance={false} />
       </div>
@@ -272,7 +288,7 @@ export default function GamePage() {
             <div>
               <button
                 onClick={handleEndLevel}
-                disabled={isEnding || !isRunning}
+                disabled={isEnding || !gameState?.isEnded}
                 className="font-bold! text-lg hover:text-white hover:drop-shadow-[0px_0px_5px_#6123ff] px-10 leading-none"
               >
                 Verify my Guess &rsaquo;
@@ -283,7 +299,7 @@ export default function GamePage() {
           <CountdownTimer
             remainingTime={remainingTime.remainingTime}
             onTimerEnd={() => {}}
-            isRunning={isRunning}
+            isRunning={gameState ? !gameState.isEnded : false}
           />
 
           <IsometricGrid
@@ -308,7 +324,7 @@ export default function GamePage() {
       )}
 
       {/* Level End Dialog */}
-      <AlertDialog open={remainingTime.remainingTime === 0 || isEnding}>
+      <AlertDialog open={showLevelSummary}>
         <AlertDialogContent className="bg-[#161525] border-2 border-[#5b23d4] w-1/3">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-2xl font-bold mb-4 flex justify-center">
@@ -317,9 +333,9 @@ export default function GamePage() {
 
             <AlertDialogDescription className="text-lg text-center">
               <span className="text-[#5cffb1] my-2">
-                You got {resultBugs} {resultBugs === 1 ? " bug" : " bugs"}
+                You got {levelStats?.bugsFound || 0}{" "}
+                {levelStats?.bugsFound === 1 ? " bug" : " bugs"}
               </span>
-
               <br />
 
               {verificationInProg ? (
@@ -330,7 +346,7 @@ export default function GamePage() {
                 </>
               ) : proofIsVerified ? (
                 <>
-                  {playerIsGuest && resultBugs === gameConfig.bugs.length ? (
+                  {levelStats?.bugsFound == levelStats?.totalBugs ? (
                     <span className="text-[#5cffb1]">
                       You got all the bugs!
                     </span>
@@ -385,7 +401,7 @@ export default function GamePage() {
           <AlertDialogFooter className="m-auto">
             <AlertDialogAction
               className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
-              onClick={handleContinueToNextRound}
+              onClick={handleContinueToNextLevel}
               disabled={verificationInProg || isFullVerifying}
             >
               {isLoading ? "Starting..." : "Next Block ›"}
