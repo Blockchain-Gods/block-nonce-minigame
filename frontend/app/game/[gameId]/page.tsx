@@ -39,6 +39,7 @@ import { useGameCreation } from "@/hooks/useGameCreation";
 import { SwishSpinner } from "@/components/SwishSpinner";
 import Cookies from "js-cookie";
 import RoundSummary from "@/components/RoundSummary";
+import { Button } from "@/components/ui/button";
 
 export default function GamePage() {
   const { startGuestGame, startWeb3Game, isLoading } = useGameCreation();
@@ -69,6 +70,7 @@ export default function GamePage() {
   const [currentLevel, setCurrentLevel] = useState(1);
   const [levelStats, setLevelStats] = useState<LevelStat>();
   const [roundStats, setRoundStats] = useState<LevelStat[]>([]);
+  const [roundHasEnded, setRoundHasEnded] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
 
   // Initialize playerIdentifier on mount
@@ -133,19 +135,21 @@ export default function GamePage() {
         return;
       }
       // console.log(`Level data: \n${JSON.stringify(data)}`);
+      // console.log(`Current Round from useEffect: ${JSON.stringify(data)}`);
       const { result, roundComplete } = data;
       setLevelStats(result);
       setShowLevelSummary(true);
       setIsEnding(true);
-
       if (roundComplete) {
-        // setShowRoundSummary(true);
+        console.log("Round complete");
+        setRoundHasEnded(true);
         // TODO: Use data from server
-        setCurrentRound((prev) => prev + 1);
-        setCurrentLevel(1);
+        // setCurrentRound((prev) => prev + 1);
+        // setCurrentLevel(1);
       } else {
+        console.log("Level complete");
         // TODO: Use data from server
-        setCurrentLevel((prev) => prev + 1);
+        // setCurrentLevel((prev) => prev + 1);
       }
 
       setRoundStats((prev) => [...prev, result]);
@@ -153,6 +157,7 @@ export default function GamePage() {
 
     // Setup game end listener
     setupGameEndListener(gameId, (data) => {
+      // console.log(`Game end data: ${JSON.stringify(data)}`);
       setVerificationInProg(data.result.verificationInProgress);
       setEndType(data.result.endType);
       setProofIsVerified(data.result.proofVerified);
@@ -164,9 +169,9 @@ export default function GamePage() {
     };
   }, [gameId]);
 
-  console.log(
-    `Level Stats outside useEffect: \n ${JSON.stringify(levelStats)}`
-  );
+  // console.log(
+  //   `Level Stats outside useEffect: \n ${JSON.stringify(levelStats)}`
+  // );
 
   const handleEndLevel = async () => {
     if (!playerIdentifier || !gameId) return;
@@ -214,6 +219,7 @@ export default function GamePage() {
 
   const handleContinueToNextRound = () => {
     setShowRoundSummary(false);
+    setShowLevelSummary(false);
     setRoundStats([]);
     setIsEnding(false);
     initializeGame(); // Start the first level of the new round
@@ -267,7 +273,7 @@ export default function GamePage() {
     <main className="flex flex-col items-center justify-center">
       <div className="w-full p-4 flex justify-between items-center">
         <div className="text-[#6123ff]">
-          <span>Round {currentRound}</span>
+          <span>Round {gameState?.currentRound}</span>
           <span className="mx-2">•</span>
           <span>Level {gameState?.currentLevel}</span>
         </div>
@@ -277,10 +283,19 @@ export default function GamePage() {
       {/* Game Content */}
       {gameConfig && (
         <div className="relative">
-          <div className="w-max absolute left-[146px] top-[6px]">
-            <div className="text-start text-4xl text-[#6123ff] flex flex-col">
+          <div className="w-max flex gap-4 absolute left-[146px] top-[6px]">
+            <div className="text-center text-4xl text-[#6123ff] flex flex-col">
+              <p className="text-xs leading-none">Epoch:</p>
+              <p className="font-bold leading-none">
+                {gameState?.currentRound}
+              </p>
+            </div>
+            <div className="border border-[#6123ff]"></div>
+            <div className="text-center text-4xl text-[#6123ff] flex flex-col">
               <p className="text-xs leading-none">Block No.:</p>
-              <p className="font-bold leading-none">{gamesPlayed}</p>
+              <p className="font-bold leading-none">
+                {gameState?.currentLevel}
+              </p>
             </div>
           </div>
 
@@ -396,26 +411,62 @@ export default function GamePage() {
                   You didn't get all the bugs :(
                 </span>
               )}
+              {showRoundSummary && <span>{JSON.stringify(roundStats)}</span>}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="m-auto">
-            <AlertDialogAction
-              className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
-              onClick={handleContinueToNextLevel}
-              disabled={verificationInProg || isFullVerifying}
-            >
-              {isLoading ? "Starting..." : "Next Block ›"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          {roundHasEnded ? (
+            <>
+              <Button onClick={() => setShowRoundSummary(true)}>
+                Show Epoch Stats
+              </Button>
+
+              <AlertDialogFooter className="m-auto">
+                <AlertDialogAction
+                  className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
+                  onClick={
+                    roundHasEnded
+                      ? handleContinueToNextRound
+                      : handleContinueToNextLevel
+                  }
+                  disabled={verificationInProg || isFullVerifying}
+                >
+                  {isLoading
+                    ? "Starting..."
+                    : roundHasEnded
+                    ? "Next Epoch ›"
+                    : "Next Block ›"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </>
+          ) : (
+            <AlertDialogFooter className="m-auto">
+              <AlertDialogAction
+                className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
+                onClick={
+                  roundHasEnded
+                    ? handleContinueToNextRound
+                    : handleContinueToNextLevel
+                }
+                disabled={verificationInProg || isFullVerifying}
+              >
+                {isLoading
+                  ? "Starting..."
+                  : roundHasEnded
+                  ? "Next Epoch ›"
+                  : "Next Block ›"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          )}
         </AlertDialogContent>
       </AlertDialog>
       {/* Round Summary Dialog */}
-      {showRoundSummary && (
+
+      {/* {showRoundSummary && (
         <RoundSummary
           roundStats={roundStats}
           onContinue={handleContinueToNextRound}
         />
-      )}
+      )} */}
     </main>
   );
 }
