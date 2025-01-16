@@ -63,8 +63,9 @@ function setupGameRoutes(gameService, io) {
     const { gameId } = req.params;
     const { address } = req.body;
     try {
-      console.log("Starting level");
+      console.log("Starting level...");
       const gameData = await gameService.startLevel(gameId, address);
+      console.log(`Starting level with data: \n${JSON.stringify(gameData)}`);
       res.json(gameData);
     } catch (error) {
       console.error(`Error starting level: ${error.message}`);

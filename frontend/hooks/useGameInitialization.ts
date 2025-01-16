@@ -8,6 +8,7 @@ interface UseGameInitializationReturn {
   gameConfig: GameConfig | null;
   error: string | null;
   initializeGame: () => Promise<void>;
+  initializeNewGame: () => Promise<void>;
   initializeLevel: () => Promise<void>;
   isLoading: boolean;
 }
@@ -47,6 +48,38 @@ export const useGameInitialization = (
         }
       }
 
+      // const generatedData = await startGame(playerIdentifier, gameId);
+
+      // const config: GameConfig = {
+      //   startTime: generatedData.startTime,
+      //   duration: generatedData.duration,
+      //   gridSize: generatedData.gridSize,
+      //   bugs: generatedData.bugs,
+      // };
+      // setGameConfig(config);
+      initializeNewGame();
+    } catch (error) {
+      const errorMessage =
+        error instanceof ApiError ? error.message : "Failed to initialize game";
+
+      setError(errorMessage);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: errorMessage,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // TODO: end game. create a new game. start the new game.
+  const initializeNewGame = async () => {
+    setIsLoading(true);
+    setError(null);
+    console.log("Initializing a new game");
+
+    try {
       const generatedData = await startGame(playerIdentifier, gameId);
 
       const config: GameConfig = {
@@ -58,8 +91,9 @@ export const useGameInitialization = (
       setGameConfig(config);
     } catch (error) {
       const errorMessage =
-        error instanceof ApiError ? error.message : "Failed to initialize game";
-
+        error instanceof ApiError
+          ? error.message
+          : "Failed to initialize new game";
       setError(errorMessage);
       toast({
         variant: "destructive",
@@ -100,5 +134,12 @@ export const useGameInitialization = (
     }
   };
 
-  return { gameConfig, error, initializeGame, initializeLevel, isLoading };
+  return {
+    gameConfig,
+    error,
+    initializeGame,
+    initializeNewGame,
+    initializeLevel,
+    isLoading,
+  };
 };

@@ -89,6 +89,7 @@ export default function GamePage() {
     gameConfig,
     error: initError,
     initializeGame,
+    initializeNewGame,
     initializeLevel,
   } = useGameInitialization(playerIdentifier, gameId);
 
@@ -219,10 +220,11 @@ export default function GamePage() {
 
   const handleContinueToNextRound = () => {
     setShowRoundSummary(false);
+    setRoundHasEnded(false);
     setShowLevelSummary(false);
     setRoundStats([]);
     setIsEnding(false);
-    initializeGame(); // Start the first level of the new round
+    initializeNewGame(); // Start the first level of the new round
   };
 
   const handleContinueToNextLevel = () => {
@@ -272,11 +274,6 @@ export default function GamePage() {
   return (
     <main className="flex flex-col items-center justify-center">
       <div className="w-full p-4 flex justify-between items-center">
-        <div className="text-[#6123ff]">
-          <span>Round {gameState?.currentRound}</span>
-          <span className="mx-2">•</span>
-          <span>Level {gameState?.currentLevel}</span>
-        </div>
         <ConnectButton showBalance={false} />
       </div>
 

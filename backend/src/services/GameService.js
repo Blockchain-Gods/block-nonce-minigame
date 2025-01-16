@@ -13,6 +13,8 @@ class GameService {
       MAX_GRID_SIZE: 16, //change back to 16
       GAME_DURATION: 35000, // 35 seconds
       LEVELS_PER_ROUND: 2,
+      MAX_ROUNDS: 3,
+
       // Difficulty increases with each level
       DIFFICULTY_SCALING: {
         GRID_SIZE_INCREMENT: 2, // Grid size increases by 2 each level
@@ -162,14 +164,14 @@ class GameService {
   async endLevel(gameId, endType = "timeout") {
     console.log("GSer Ending level");
     const game = this.gameStateManager.getGame(gameId);
-    console.log(`GSer game details: ${JSON.stringify(game)}`);
+    // console.log(`GSer game details: ${JSON.stringify(game)}`);
     if (!game || game.isEnded) return null;
 
     // Calculate level statistics
     const bugsFound = game.clickedCells.filter((cell) =>
       game.config.bugs.some((bug) => bug.x === cell.x && bug.y === cell.y)
     ).length;
-    console.log(`Bugs found: ${bugsFound}`);
+
     const levelScore = this.calculateLevelScore(
       bugsFound,
       game.config.bugs.length,
@@ -185,30 +187,43 @@ class GameService {
       score: levelScore,
     };
 
+    // Check if this completes the current round
+    const isRoundComplete =
+      game.currentLevel >= this.GAME_CONFIG.LEVELS_PER_ROUND;
+    // Check if this completes the entire game
+    const isGameComplete =
+      isRoundComplete && game.currentRound >= this.GAME_CONFIG.MAX_ROUNDS;
+
     // Update game state with level results
     const updates = {
       isEnded: true,
-      currentLevel: game.currentLevel + 1,
+      // currentLevel: game.currentLevel + 1,
       roundStats: [...(game.roundStats || []), levelResult],
       totalScore: (game.totalScore || 0) + levelScore,
     };
 
-    // Check if round is complete
-    if (updates.currentLevel > this.GAME_CONFIG.LEVELS_PER_ROUND) {
+    if (isGameComplete) {
+      // Handle game completion
+      await this.completeGame(gameId, updates);
+    } else if (isRoundComplete) {
+      // Handle round completion
       updates.currentLevel = 1;
       updates.currentRound = game.currentRound + 1;
+      await this.completeRound(gameId, updates);
+    } else {
+      // Continue to next level
+      updates.currentLevel = game.currentLevel + 1;
+      this.gameStateManager.updateGame(gameId, updates);
+
+      // Emit level completion event
+      this.io.to(gameId).emit("levelEnded", {
+        gameId,
+        result: levelResult,
+        roundComplete: false,
+        currentRound: game.currentRound,
+        totalScore: updates.totalScore,
+      });
     }
-
-    this.gameStateManager.updateGame(gameId, updates);
-
-    // Emit level completion event
-    this.io.to(gameId).emit("levelEnded", {
-      gameId,
-      result: levelResult,
-      roundComplete: updates.currentLevel === 1,
-      currentRound: updates.currentRound,
-      totalScore: updates.totalScore,
-    });
 
     return levelResult;
   }
@@ -513,6 +528,82 @@ class GameService {
       console.error(`Error in full verification for game ${gameId}:`, error);
       throw new Error("Failed to complete full verification");
     }
+  }
+
+  async completeRound(gameId, updates) {
+    const game = this.gameStateManager.getGame(gameId);
+
+    // Update game state with round completion
+    this.gameStateManager.updateGame(gameId, updates);
+
+    // Calculate round statistics
+    const roundStats = {
+      round: game.currentRound,
+      totalScore: updates.totalScore,
+      levels: game.roundStats,
+    };
+    console.log("Socket emitting roundComplete event");
+    // Emit round completion event
+    this.io.to(gameId).emit("roundComplete", {
+      gameId,
+      roundStats,
+      nextRound: updates.currentRound,
+      totalScore: updates.totalScore,
+    });
+  }
+
+  async completeGame(gameId, updates) {
+    const game = this.gameStateManager.getGame(gameId);
+
+    // Add final game completion flags
+    const finalUpdates = {
+      ...updates,
+      gameComplete: true,
+      finalScore: updates.totalScore,
+    };
+
+    // Update final game state
+    this.gameStateManager.updateGame(gameId, finalUpdates);
+
+    // Calculate final game statistics
+    const gameStats = {
+      totalRounds: game.currentRound,
+      finalScore: updates.totalScore,
+      roundStats: game.roundStats,
+      totalPlayTime: Date.now() - game.startTime,
+    };
+
+    // For web3 users, verify the final score
+    if (!game.address.startsWith("guest_")) {
+      try {
+        const verificationResult = await this.proofVerifier.verifyGuessFull(
+          gameStats.finalScore
+        );
+        gameStats.verified = verificationResult.success;
+        gameStats.onChainVerified = verificationResult.on_chain_verified;
+      } catch (error) {
+        console.error("Final score verification failed:", error);
+        gameStats.verified = false;
+        gameStats.verificationError = error.message;
+      }
+    }
+    console.log("Socket emitting gameComplete event");
+    // Emit game completion event
+    this.io.to(gameId).emit("gameComplete", {
+      gameId,
+      gameStats,
+      finalScore: updates.totalScore,
+    });
+
+    // Clean up game resources
+    if (game.timeoutId) {
+      clearTimeout(game.timeoutId);
+    }
+
+    // Optional: Remove game from state after a delay
+    setTimeout(() => {
+      this.gameStateManager.removeGame(gameId);
+    }, 5000);
   }
 
   async processTransaction(gameId, signedTransaction, address) {
