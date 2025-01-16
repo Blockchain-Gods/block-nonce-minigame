@@ -71,17 +71,46 @@ const gameService = new GameService(
   io
 );
 
+const validateGameState = createStateValidationMiddleware(gameService);
+
+// Socket.io state change handling
+io.on("connection", (socket) => {
+  socket.on("joinGame", (gameId) => {
+    socket.join(gameId);
+    // Send initial state to client
+    const currentState = gameService.getGameState(gameId);
+    socket.emit("gameState", {
+      gameId,
+      state: currentState,
+      validActions: Object.entries(gameService.API_VALIDATION_RULES)
+        .filter(([_, rule]) => rule.validStates.includes(currentState))
+        .map(([action]) => action),
+    });
+  });
+});
+
 // Apply auth middleware globally
 app.use(validateAddress);
 
 // Setup routes with the new game service
-app.use("/api/game", setupGameRoutes(gameService, io));
+app.use("/api/game", setupGameRoutes(gameService, io, validateGameState));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
 
   // Handle specific error types
+  if (err.name === "StateValidationError") {
+    return res.status(409).json({
+      error: err.message,
+      currentState: err.currentState,
+      expectedStates: err.expectedStates,
+      validActions: Object.entries(gameService.API_VALIDATION_RULES)
+        .filter(([_, rule]) => rule.validStates.includes(err.currentState))
+        .map(([action]) => action),
+    });
+  }
+
   if (err.name === "ValidationError") {
     return res.status(400).json({ error: err.message });
   }

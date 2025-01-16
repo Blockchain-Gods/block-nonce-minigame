@@ -22,6 +22,33 @@ class GameService {
         TIME_DECREMENT: 5000, // Time decreases by 5 seconds each level
       },
     };
+
+    this.VALID_STATES = {
+      CREATED: "CREATED",
+      LEVEL_STARTED: "LEVEL_STARTED",
+      LEVEL_ENDED: "LEVEL_ENDED",
+      ROUND_COMPLETE: "ROUND_COMPLETE",
+      GAME_COMPLETE: "GAME_COMPLETE",
+    };
+
+    this.API_VALIDATION_RULES = {
+      startLevel: {
+        validStates: ["CREATED", "LEVEL_ENDED", "ROUND_COMPLETE"],
+        errorMessage: "Cannot start level in current game state",
+      },
+      handleClick: {
+        validStates: ["LEVEL_STARTED"],
+        errorMessage: "Cannot process clicks until level is started",
+      },
+      endLevel: {
+        validStates: ["LEVEL_STARTED"],
+        errorMessage: "Cannot end level that hasn't started",
+      },
+      endGame: {
+        validStates: ["LEVEL_ENDED", "ROUND_COMPLETE", "GAME_COMPLETE"],
+        errorMessage: "Cannot end game in current state",
+      },
+    };
   }
 
   // Helper method to validate game access

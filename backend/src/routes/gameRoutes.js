@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-function setupGameRoutes(gameService, io) {
+function setupGameRoutes(gameService, io, validateGameState) {
   // Socket.io connection handling
   io.on("connection", (socket) => {
     console.log("Client connected");
@@ -9,6 +9,15 @@ function setupGameRoutes(gameService, io) {
     socket.on("joinGame", (gameId) => {
       socket.join(gameId);
       console.log(`Client joined game room: ${gameId}`);
+
+      // Send initial state information
+      const currentState = gameService.getGameState(gameId);
+      socket.emit("gameState", {
+        gameId,
+        state: currentState,
+        validActions: gameService.getValidActions(currentState),
+      });
+      console.log("Game state emitted");
     });
 
     socket.on("disconnect", () => {
@@ -23,88 +32,146 @@ function setupGameRoutes(gameService, io) {
     try {
       const gameId = await gameService.createGame(address);
       console.log(`GameId: ${gameId}`);
+
+      // Emit initial game state
+      io.to(gameId).emit("gameState", {
+        gameId,
+        state: gameService.VALID_STATES.CREATED,
+        validActions: ["startLevel"],
+      });
+
       res.json({ gameId });
     } catch (error) {
       if (error.message.includes("already has active game")) {
         const gameId =
           gameService.gameStateManager.activePlayerGames.get(address);
-        return res.status(409).json({ error: error.message, gameId });
+        return res.status(409).json({
+          error: error.message,
+          gameId,
+          currentState: gameService.getGameState(gameId),
+        });
       }
       res.status(400).json({ error: error.message });
     }
   });
 
   // Start game
-  router.post("/start-game/:gameId", async (req, res) => {
-    const { gameId } = req.params;
-    const { address } = req.body;
-    console.log("Router trying to start the game");
-    try {
-      const game = gameService.gameStateManager.getGame(gameId);
-      if (!game) {
-        throw new Error("Game not found");
+  router.post(
+    "/start-game/:gameId",
+    validateGameState("startLevel"),
+    async (req, res) => {
+      const { gameId } = req.params;
+      const { address } = req.body;
+      console.log("Router trying to start the game");
+
+      try {
+        const game = gameService.gameStateManager.getGame(gameId);
+        if (!game) {
+          throw new Error("Game not found");
+        }
+
+        const gameData = await gameService.startLevel(gameId, address);
+
+        // Game state is now LEVEL_STARTED
+        io.to(gameId).emit("gameState", {
+          gameId,
+          state: gameService.VALID_STATES.LEVEL_STARTED,
+          validActions: ["handleClick", "endLevel"],
+        });
+
+        res.json({
+          ...gameData,
+          currentRound: game.currentRound,
+          currentLevel: game.currentLevel,
+          totalScore: game.totalScore || 0,
+          state: req.gameState,
+        });
+      } catch (error) {
+        console.error(`Error starting game: ${error.message}`);
+        res.status(400).json({ error: error.message });
       }
-
-      const gameData = await gameService.startLevel(gameId, address);
-
-      res.json({
-        ...gameData,
-        currentRound: game.currentRound,
-        currentLevel: game.currentLevel,
-        totalScore: game.totalScore || 0,
-      });
-    } catch (error) {
-      console.error(`Error starting game: ${error.message}`);
-      res.status(400).json({ error: error.message });
     }
-  });
+  );
 
-  router.post("/start-level/:gameId", async (req, res) => {
-    const { gameId } = req.params;
-    const { address } = req.body;
-    try {
-      console.log("Starting level...");
-      const gameData = await gameService.startLevel(gameId, address);
-      console.log(`Starting level with data: \n${JSON.stringify(gameData)}`);
-      res.json(gameData);
-    } catch (error) {
-      console.error(`Error starting level: ${error.message}`);
-      res.status(400).json({ error: error.message });
+  router.post(
+    "/start-level/:gameId",
+    validateGameState("startLevel"),
+    async (req, res) => {
+      const { gameId } = req.params;
+      const { address } = req.body;
+      try {
+        console.log("Starting level...");
+        const gameData = await gameService.startLevel(gameId, address);
+
+        // Emit state change
+        io.to(gameId).emit("gameState", {
+          gameId,
+          state: gameService.VALID_STATES.LEVEL_STARTED,
+          validActions: ["handleClick", "endLevel"],
+        });
+
+        console.log(`Starting level with data: \n${JSON.stringify(gameData)}`);
+        res.json({ ...gameData, state: req.gameState });
+      } catch (error) {
+        console.error(`Error starting level: ${error.message}`);
+        res.status(400).json({ error: error.message });
+      }
     }
-  });
+  );
 
   // Handle cell clicks
-  router.post("/click", async (req, res) => {
+  router.post("/click", validateGameState("handleClick"), async (req, res) => {
     const { gameId, x, y, address } = req.body;
 
     try {
       const result = await gameService.handleClick(gameId, x, y, address);
-      res.json(result);
+      res.json({
+        ...result,
+        state: req.gameState,
+      });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
   });
 
   // End current level
-  router.post("/end-level", async (req, res) => {
+  router.post("/end-level", validateGameState("endLevel"), async (req, res) => {
     const { gameId, address } = req.body;
 
     try {
       console.log("GRou Ending level");
       const result = await gameService.endLevel(gameId, "manual");
+
+      // Determine next state based on game progress
+      const nextState = result.roundComplete
+        ? result.gameComplete
+          ? gameService.VALID_STATES.GAME_COMPLETE
+          : gameService.VALID_STATES.ROUND_COMPLETE
+        : gameService.VALID_STATES.LEVEL_ENDED;
+
       console.log(`GRou ending result: ${JSON.stringify(result)}`);
-      // Emit level ended event
+
+      // Emit state change with appropriate next valid actions
+      io.to(gameId).emit("gameState", {
+        gameId,
+        state: nextState,
+        validActions: gameService.getValidActions(nextState),
+      });
+
       io.to(gameId).emit(`levelEnded_${gameId}`, {
         gameId,
         result,
         roundComplete: result.currentLevel === 1,
         currentRound: result.currentRound,
+        state: nextState,
+        nextValidActions: gameService.getValidActions(nextState),
       });
 
       res.json({
         success: true,
         gameId,
         result,
+        state: nextState,
       });
     } catch (error) {
       console.error(`Error ending level for game ${gameId}:`, error);
@@ -113,21 +180,30 @@ function setupGameRoutes(gameService, io) {
   });
 
   // End entire game
-  router.post("/end-game", async (req, res) => {
+  router.post("/end-game", validateGameState("endGame"), async (req, res) => {
     const { gameId, address } = req.body;
 
     try {
       const result = await gameService.endGame(gameId, "manual");
 
+      // Final state emission
+      io.to(gameId).emit("gameState", {
+        gameId,
+        state: gameService.VALID_STATES.GAME_COMPLETE,
+        validActions: [], // No more actions available after game completion
+      });
+
       io.to(gameId).emit("gameEnded", {
         gameId,
         result,
+        state: gameService.VALID_STATES.GAME_COMPLETE,
       });
 
       res.json({
         success: true,
         gameId,
         result,
+        state: gameService.VALID_STATES.GAME_COMPLETE,
       });
     } catch (error) {
       console.error(`Error ending game ${gameId}:`, error);
@@ -179,7 +255,7 @@ function setupGameRoutes(gameService, io) {
 
     try {
       const game = gameService.validateGameAccess(gameId, address);
-
+      const currentState = gameService.getGameState(gameId);
       console.log(`Router stats: ${JSON.stringify(game)} `);
       res.json({
         ...game,
@@ -187,6 +263,8 @@ function setupGameRoutes(gameService, io) {
         currentLevel: game.currentLevel || 1,
         totalScore: game.totalScore || 0,
         roundStats: game.roundStats || [],
+        currentState,
+        validActions: gameService.getValidActions(currentState),
       });
     } catch (error) {
       res
