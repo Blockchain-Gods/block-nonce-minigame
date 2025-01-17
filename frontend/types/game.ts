@@ -133,13 +133,14 @@ export class ApiError extends Error {
   }
 }
 
-export interface GameStateData {
+export interface GameStateResponse extends GameState {
   currentState: string;
   validActions: string[];
 }
 
-export interface GameStateResponse extends GameState {
-  currentState: string;
+export interface GameStateData {
+  gameId: string;
+  state: string;
   validActions: string[];
 }
 
@@ -148,3 +149,41 @@ export interface StateValidationError extends ApiError {
   expectedStates: string[];
   validActions: string[];
 }
+
+// Game state constants
+export const VALID_STATES = {
+  CREATED: "CREATED",
+  LEVEL_STARTED: "LEVEL_STARTED",
+  LEVEL_ENDED: "LEVEL_ENDED",
+  ROUND_COMPLETE: "ROUND_COMPLETE",
+  GAME_COMPLETE: "GAME_COMPLETE",
+} as const;
+
+export type ValidState = (typeof VALID_STATES)[keyof typeof VALID_STATES];
+
+export const API_VALIDATION_RULES = {
+  startLevel: {
+    validStates: [
+      VALID_STATES.CREATED,
+      VALID_STATES.LEVEL_ENDED,
+      VALID_STATES.ROUND_COMPLETE,
+    ],
+    errorMessage: "Cannot start level in current game state",
+  },
+  handleClick: {
+    validStates: [VALID_STATES.LEVEL_STARTED],
+    errorMessage: "Cannot process clicks until level is started",
+  },
+  endLevel: {
+    validStates: [VALID_STATES.LEVEL_STARTED],
+    errorMessage: "Cannot end level that hasn't started",
+  },
+  endGame: {
+    validStates: [
+      VALID_STATES.LEVEL_ENDED,
+      VALID_STATES.ROUND_COMPLETE,
+      VALID_STATES.GAME_COMPLETE,
+    ],
+    errorMessage: "Cannot end game in current state",
+  },
+} as const;

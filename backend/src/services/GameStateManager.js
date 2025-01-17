@@ -52,15 +52,6 @@ class GameStateManager {
       throw new Error("Game not found");
     }
 
-    if (
-      updates.state &&
-      !this.isValidStateTransition(game.state, updates.state)
-    ) {
-      throw new Error(
-        `Invalid state transition from ${game.state} to ${updates.state}`
-      );
-    }
-
     const updatedGame = {
       ...game,
       ...updates,

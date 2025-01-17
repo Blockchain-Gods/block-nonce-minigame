@@ -55,15 +55,26 @@ export const initializeSocket = () => {
     });
 
     socket.on("gameState", (data: GameStateData) => {
-      gameStateManager.updateState(data.currentState, data.validActions);
+      console.log("Received gameState:", data);
+      gameStateManager.updateState(data.state, data.validActions);
     });
 
     socket.on(
       "stateChanged",
       (data: { newState: string; validActions: string[] }) => {
+        console.log("State changed:", data);
         gameStateManager.updateState(data.newState, data.validActions);
       }
     );
+
+    // Add error handling for socket
+    socket.on("error", (error: any) => {
+      console.error("Socket error:", error);
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Disconnected from game server");
+    });
   }
   return socket;
 };
@@ -77,18 +88,32 @@ export const waitForValidState = (
   timeout = 30000
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
-    if (gameStateManager.getCurrentState() === targetState) {
+    const currentState = gameStateManager.getCurrentState();
+    console.log(
+      `Waiting for state ${targetState}, current state: ${currentState}`
+    );
+
+    if (currentState === targetState) {
       resolve(true);
       return;
     }
 
     const timeoutId = setTimeout(() => {
-      reject(new Error("State wait timeout"));
+      gameStateManager.removeStateChangeListener(stateChangeHandler);
+      reject(
+        new Error(
+          `State wait timeout. Current: ${gameStateManager.getCurrentState()}, Expected: ${targetState}`
+        )
+      );
     }, timeout);
 
     const stateChangeHandler = (newState: string) => {
+      console.log(
+        `State changed to ${newState} while waiting for ${targetState}`
+      );
       if (newState === targetState) {
         clearTimeout(timeoutId);
+        gameStateManager.removeStateChangeListener(stateChangeHandler);
         resolve(true);
       }
     };
@@ -171,22 +196,33 @@ export const startLevel = async (
   gameId: string
 ): Promise<GameConfig> => {
   try {
+    const currentState = gameStateManager.getCurrentState();
+    console.log(`Attempting to start level. Current state: ${currentState}`);
+
     if (!gameStateManager.isActionValid("startLevel")) {
-      throw new ApiError(
+      const error = new ApiError(
         "Cannot start level in current state",
         409,
         "INVALID_STATE",
-        gameStateManager.getCurrentState(),
+        currentState,
         ["CREATED", "LEVEL_ENDED", "ROUND_COMPLETE"]
       );
+      console.log("State validation failed:", error);
+      throw error;
     }
 
     const response = await apiClient.post<GameConfig>(
       `/start-level/${gameId}`,
-      { address }
+      {
+        address,
+      }
     );
+    console.log("Level started successfully");
     return response.data;
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     return handleApiError(error as AxiosError);
   }
 };
@@ -411,4 +447,36 @@ export const getPlayerStats = async (address: string): Promise<PlayerStats> => {
   } catch (error) {
     return handleApiError(error as AxiosError);
   }
+};
+
+export const retryWithStateValidation = async <T>(
+  action: () => Promise<T>,
+  requiredState: string,
+  maxAttempts = 3,
+  retryDelay = 2000
+): Promise<T> => {
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    try {
+      return await action();
+    } catch (error) {
+      attempts++;
+
+      if (error instanceof ApiError && error.code === "INVALID_STATE") {
+        console.log(`Attempt ${attempts}: Waiting for state ${requiredState}`);
+        try {
+          await waitForValidState(requiredState, retryDelay);
+          continue;
+        } catch (waitError) {
+          if (attempts === maxAttempts) throw waitError;
+          continue;
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Max retry attempts reached");
 };

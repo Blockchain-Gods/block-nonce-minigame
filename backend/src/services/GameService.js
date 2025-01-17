@@ -75,6 +75,51 @@ class GameService {
     return validTransitions[currentState]?.includes(nextState) ?? false;
   }
 
+  validateApiCall(gameId, actionName) {
+    const game = this.gameStateManager.getGame(gameId);
+    if (!game) {
+      throw new Error("Game not found");
+    }
+
+    const currentState = game.state || this.VALID_STATES.CREATED;
+    const validationRule = this.API_VALIDATION_RULES[actionName];
+
+    if (!validationRule) {
+      // If no validation rule exists for this action, allow it
+      return true;
+    }
+
+    if (!validationRule.validStates.includes(currentState)) {
+      throw new Error({
+        message: validationRule.errorMessage,
+        currentState,
+        expectedStates: validationRule.validStates,
+        code: "INVALID_STATE",
+      });
+    }
+
+    return true;
+  }
+
+  async updateGameWithStateValidation(gameId, updates) {
+    const game = this.gameStateManager.getGame(gameId);
+    if (!game) {
+      throw new Error("Game not found");
+    }
+
+    // Validate state transition if state is being updated
+    if (
+      updates.state &&
+      !this.validateStateTransition(game.state, updates.state)
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${updates.state}`
+      );
+    }
+
+    return this.gameStateManager.updateGame(gameId, updates);
+  }
+
   // Helper method to validate game access
   validateGameAccess(gameId, address) {
     const game = this.gameStateManager.getGame(gameId);
@@ -206,7 +251,7 @@ class GameService {
       state: this.VALID_STATES.LEVEL_STARTED,
     };
 
-    this.gameStateManager.updateGame(gameId, updates);
+    await this.updateGameWithStateValidation(gameId, updates);
     this.setGameEndTimer(gameId, gameConfig.gameDuration);
 
     return {
@@ -288,7 +333,7 @@ class GameService {
       await this.completeRound(gameId, updates);
     } else {
       updates.currentLevel = game.currentLevel + 1;
-      this.gameStateManager.updateGame(gameId, updates);
+      await this.updateGameWithStateValidation(gameId, updates);
     }
 
     return {
@@ -347,7 +392,7 @@ class GameService {
     };
 
     // Update game state
-    this.gameStateManager.updateGame(gameId, updates);
+    await this.updateGameWithStateValidation(gameId, updates);
 
     // Set automatic game end timer
     this.setGameEndTimer(gameId, gameConfig.gameDuration);
@@ -391,7 +436,7 @@ class GameService {
     }
 
     game.clickedCells.push({ x, y });
-    this.gameStateManager.updateGame(gameId, game);
+    await this.updateGameWithStateValidation(gameId, updates);
     return {
       success: true,
       state: game.state,
@@ -450,7 +495,7 @@ class GameService {
         verificationInProgress: false,
       };
 
-      this.gameStateManager.updateGame(gameId, {
+      await this.updateGameWithStateValidation(gameId, {
         ...updates,
         result: finalResult,
       });
@@ -470,7 +515,7 @@ class GameService {
         verificationInProgress: false,
       };
 
-      this.gameStateManager.updateGame(gameId, {
+      await this.updateGameWithStateValidation(gameId, {
         ...updates,
         result: finalResult,
       });
@@ -577,7 +622,7 @@ class GameService {
         contractTxHash: contractResult,
       };
 
-      this.gameStateManager.updateGame(gameId, {
+      await this.updateGameWithStateValidation(gameId, {
         isEnded: true,
         endType,
         endTime: Date.now(),
@@ -626,7 +671,7 @@ class GameService {
     }
 
     // Update game state with round completion
-    this.gameStateManager.updateGame(gameId, {
+    await this.updateGameWithStateValidation(gameId, {
       ...updates,
       state: this.VALID_STATES.ROUND_COMPLETE,
     });
@@ -667,7 +712,7 @@ class GameService {
     };
 
     // Update final game state
-    this.gameStateManager.updateGame(gameId, finalUpdates);
+    await this.updateGameWithStateValidation(gameId, finalUpdates);
 
     // Calculate final game statistics
     const gameStats = {

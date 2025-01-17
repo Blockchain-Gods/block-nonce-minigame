@@ -11,7 +11,6 @@ class StateValidationError extends Error {
 const createStateValidationMiddleware = (gameService) => {
   return (actionName) => async (req, res, next) => {
     const gameId = req.params.gameId || req.body.gameId;
-
     if (!gameId) {
       return next(); // Skip validation if no gameId (for create-game, etc.)
     }
@@ -26,13 +25,16 @@ const createStateValidationMiddleware = (gameService) => {
       const expectedStates =
         gameService.API_VALIDATION_RULES[actionName]?.validStates;
 
-      next(
-        new StateValidationError(
-          `Invalid game state for action ${actionName}`,
-          currentState,
-          expectedStates
-        )
+      console.error(
+        `State validation failed for ${actionName}:`,
+        error.message
       );
+      res.status(409).json({
+        error: error.message,
+        currentState,
+        expectedStates,
+        validActions: gameService.getValidActions(currentState),
+      });
     }
   };
 };

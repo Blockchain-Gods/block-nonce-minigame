@@ -258,7 +258,7 @@ function setupGameRoutes(gameService, io, validateGameState) {
     try {
       const game = gameService.validateGameAccess(gameId, address);
       const currentState = gameService.getGameState(gameId);
-      console.log(`Router stats: ${JSON.stringify(game)} `);
+      // console.log(`Router stats: ${JSON.stringify(game)} `);
       res.json({
         ...game,
         currentRound: game.currentRound || 1,
