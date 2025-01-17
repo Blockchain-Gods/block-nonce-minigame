@@ -1,6 +1,6 @@
-import { ApiError, getGameState } from "@/lib/api";
+import { getGameState } from "@/lib/api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GameState } from "@/types/game";
+import { ApiError, GameState } from "@/types/game";
 
 interface UseGameStatePollingReturn {
   gameState: GameState | null;

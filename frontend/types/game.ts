@@ -109,3 +109,42 @@ export interface RoundSummaryProps {
   roundStats: LevelStat[];
   onContinue: () => void;
 }
+
+export interface UseGameInitializationReturn {
+  gameConfig: GameConfig | null;
+  error: string | null;
+  initializeGame: () => Promise<void>;
+  initializeNewGame: () => Promise<void>;
+  initializeLevel: () => Promise<void>;
+  isLoading: boolean;
+  currentState: string | null;
+}
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number,
+    public code?: string,
+    public currentState?: string,
+    public expectedStates?: string[]
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export interface GameStateData {
+  currentState: string;
+  validActions: string[];
+}
+
+export interface GameStateResponse extends GameState {
+  currentState: string;
+  validActions: string[];
+}
+
+export interface StateValidationError extends ApiError {
+  currentState: string;
+  expectedStates: string[];
+  validActions: string[];
+}

@@ -10,7 +10,7 @@ import { useGameStatePolling } from "@/hooks/useGameStatePolling";
 import { useRemainingTime } from "@/hooks/useRemainingTime";
 import { LoadingComponent } from "@/components/LoadingComponent";
 import { useEffect, useState } from "react";
-import { LevelStat, Position } from "@/types/game";
+import { ApiError, LevelStat, Position } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import {
   cleanupGameListeners,
@@ -22,6 +22,7 @@ import {
   initializeSocket,
   setupGameEndListener,
   setupLevelEndListener,
+  waitForValidState,
 } from "@/lib/api";
 import IsometricGrid from "@/components/IsometricGrid";
 import {
@@ -47,12 +48,11 @@ export default function GamePage() {
   const { address } = useAccount();
   const { toast } = useToast();
 
-  // State
+  // Basic State
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [resultBugs, setResultBugs] = useState(0);
-  // const [playerGotAllBugs, setPlayerGotAllBugs] = useState(false);
   const [verificationInProg, setVerificationInProg] = useState(false);
-  const [proofIsVerified, setProofIsVerified] = useState(true); // TODO: change after actual implementation
+  const [proofIsVerified, setProofIsVerified] = useState(true);
   const [endType, setEndType] = useState("manual");
   const [isFullVerifying, setIsFullVerifying] = useState(false);
   const [fullVerificationResult, setFullVerificationResult] = useState<{
@@ -63,9 +63,11 @@ export default function GamePage() {
   const [playerIdentifier, setPlayerIdentifier] = useState<string>("");
   const [isEnding, setIsEnding] = useState(false);
   const [playerIsGuest, setPlayerIsGuest] = useState(false);
-  const [showLevelSummary, setShowLevelSummary] = useState(false);
 
-  // New round-related state
+  // Game State Management
+  const [currentGameState, setCurrentGameState] = useState<string | null>(null);
+  const [validActions, setValidActions] = useState<string[]>([]);
+  const [showLevelSummary, setShowLevelSummary] = useState(false);
   const [currentRound, setCurrentRound] = useState(1);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [levelStats, setLevelStats] = useState<LevelStat>();
@@ -91,6 +93,7 @@ export default function GamePage() {
     initializeGame,
     initializeNewGame,
     initializeLevel,
+    currentState,
   } = useGameInitialization(playerIdentifier, gameId);
 
   const { gameState } = useGameStatePolling(playerIdentifier!, gameId);
@@ -102,19 +105,16 @@ export default function GamePage() {
 
   // Initialize game on mount
   useEffect(() => {
-    console.log(`Player identifier:: ${playerIdentifier}`);
     if (playerIdentifier) {
       initializeGame();
-    } else {
-      console.log("Could not initialize game");
     }
   }, [playerIdentifier]);
 
+  // Stats fetching
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const stats = await getPlayerStats(playerIdentifier);
-        // console.log(`Stats: ${JSON.stringify(stats)}`);
         setGamesPlayed(stats.gamesPlayed);
       } catch (err) {
         console.error(err);
@@ -128,37 +128,48 @@ export default function GamePage() {
 
   // Setup socket listeners
   useEffect(() => {
-    initializeSocket();
-    // Setup level end listener
-    setupLevelEndListener(gameId, (data) => {
+    const socket = initializeSocket();
+
+    socket.on("gameState", (data) => {
+      setCurrentGameState(data.state);
+      setValidActions(data.validActions);
+      console.log(`Game state updated: ${data.state}`);
+      console.log(`Valid actions: ${data.validActions.join(", ")}`);
+    });
+
+    socket.on("stateChanged", (data) => {
+      setCurrentGameState(data.newState);
+      setValidActions(data.validActions);
+
+      if (data.newState === "LEVEL_ENDED") {
+        setShowLevelSummary(true);
+      } else if (data.newState === "ROUND_COMPLETE") {
+        setRoundHasEnded(true);
+        setShowRoundSummary(true);
+      }
+    });
+
+    setupLevelEndListener(gameId, async (data) => {
       if (!data || !data.result) {
         console.error("Invalid level end data received");
         return;
       }
-      // console.log(`Level data: \n${JSON.stringify(data)}`);
-      // console.log(`Current Round from useEffect: ${JSON.stringify(data)}`);
+
       const { result, roundComplete } = data;
       setLevelStats(result);
       setShowLevelSummary(true);
       setIsEnding(true);
+
       if (roundComplete) {
         console.log("Round complete");
         setRoundHasEnded(true);
-        // TODO: Use data from server
-        // setCurrentRound((prev) => prev + 1);
-        // setCurrentLevel(1);
-      } else {
-        console.log("Level complete");
-        // TODO: Use data from server
-        // setCurrentLevel((prev) => prev + 1);
+        await waitForValidState("ROUND_COMPLETE");
       }
 
       setRoundStats((prev) => [...prev, result]);
     });
 
-    // Setup game end listener
     setupGameEndListener(gameId, (data) => {
-      // console.log(`Game end data: ${JSON.stringify(data)}`);
       setVerificationInProg(data.result.verificationInProgress);
       setEndType(data.result.endType);
       setProofIsVerified(data.result.proofVerified);
@@ -167,6 +178,8 @@ export default function GamePage() {
 
     return () => {
       cleanupGameListeners(gameId);
+      socket.off("gameState");
+      socket.off("stateChanged");
     };
   }, [gameId]);
 
@@ -176,19 +189,115 @@ export default function GamePage() {
 
   const handleEndLevel = async () => {
     if (!playerIdentifier || !gameId) return;
+    if (!validActions.includes("endLevel")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Action",
+        description: "Cannot end level in current state",
+      });
+      return;
+    }
 
     try {
       setIsEnding(true);
       await endLevel(gameId, playerIdentifier);
-      setIsEnding(false);
     } catch (error: any) {
-      console.error("Error ending level:", error);
+      if (error instanceof ApiError && error.code === "INVALID_STATE") {
+        toast({
+          variant: "destructive",
+          title: "Invalid State",
+          description: `Expected states: ${error.expectedStates?.join(", ")}`,
+        });
+        // Optionally wait for valid state
+        try {
+          await waitForValidState("LEVEL_STARTED");
+          await handleEndLevel();
+        } catch (waitError) {
+          console.error("Error waiting for valid state:", waitError);
+        }
+      } else {
+        console.error("Error ending level:", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to end level",
+          description: error?.response?.data?.error || "Please try again",
+        });
+      }
+    } finally {
       setIsEnding(false);
+    }
+  };
+
+  const handleContinueToNextRound = async () => {
+    try {
+      if (currentGameState !== "ROUND_COMPLETE") {
+        await waitForValidState("ROUND_COMPLETE");
+      }
+
+      setShowRoundSummary(false);
+      setRoundHasEnded(false);
+      setShowLevelSummary(false);
+      setRoundStats([]);
+      setIsEnding(false);
+      await initializeNewGame();
+    } catch (error) {
+      console.error("Error starting new round:", error);
       toast({
         variant: "destructive",
-        title: "Failed to end level",
-        description: error?.response?.data?.error || "Please try again",
+        title: "Failed to start new round",
+        description: "Please try again",
       });
+    }
+  };
+
+  const handleContinueToNextLevel = async () => {
+    try {
+      if (currentGameState !== "LEVEL_ENDED") {
+        await waitForValidState("LEVEL_ENDED");
+      }
+
+      setShowRoundSummary(false);
+      setShowLevelSummary(false);
+      setIsEnding(false);
+      await initializeLevel();
+    } catch (error) {
+      console.error("Error starting next level:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to start next level",
+        description: "Please try again",
+      });
+    }
+  };
+
+  const handleCellReveal = async (position: Position) => {
+    if (!playerIdentifier || !gameId) return;
+    if (!validActions.includes("handleClick")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Action",
+        description: "Cannot click cells in current state",
+      });
+      return;
+    }
+
+    try {
+      await clickCell(gameId, position, playerIdentifier);
+    } catch (error: any) {
+      if (error instanceof ApiError && error.code === "INVALID_STATE") {
+        toast({
+          variant: "destructive",
+          title: "Invalid State",
+          description: `Expected state: LEVEL_STARTED`,
+        });
+      } else {
+        console.error("Error revealing cell:", error);
+        toast({
+          variant: "destructive",
+          title: "Failed to reveal cell",
+          description: error?.response?.data?.error || "Please try again",
+        });
+      }
     }
   };
 
@@ -218,23 +327,6 @@ export default function GamePage() {
     }
   };
 
-  const handleContinueToNextRound = () => {
-    setShowRoundSummary(false);
-    setRoundHasEnded(false);
-    setShowLevelSummary(false);
-    setRoundStats([]);
-    setIsEnding(false);
-    initializeNewGame(); // Start the first level of the new round
-  };
-
-  const handleContinueToNextLevel = () => {
-    setShowRoundSummary(false);
-    setShowLevelSummary(false);
-    setRoundStats([]);
-    setIsEnding(false);
-    initializeLevel();
-  };
-
   if (!gameConfig) {
     return (
       <div className="h-[100vh] flex items-center">
@@ -256,20 +348,6 @@ export default function GamePage() {
       </div>
     );
   }
-
-  const handleCellReveal = async (position: Position) => {
-    if (!playerIdentifier || !gameId) return;
-    try {
-      await clickCell(gameId, position, playerIdentifier);
-    } catch (error: any) {
-      console.error("Error revealing cell:", error);
-      toast({
-        variant: "destructive",
-        title: "Failed to reveal cell",
-        description: error?.response?.data?.error || "Please try again",
-      });
-    }
-  };
 
   return (
     <main className="flex flex-col items-center justify-center">

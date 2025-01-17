@@ -7,17 +7,19 @@ function setupGameRoutes(gameService, io, validateGameState) {
     console.log("Client connected");
 
     socket.on("joinGame", (gameId) => {
-      socket.join(gameId);
-      console.log(`Client joined game room: ${gameId}`);
-
-      // Send initial state information
-      const currentState = gameService.getGameState(gameId);
-      socket.emit("gameState", {
-        gameId,
-        state: currentState,
-        validActions: gameService.getValidActions(currentState),
-      });
-      console.log("Game state emitted");
+      try {
+        socket.join(gameId);
+        const currentState = gameService.getGameState(gameId);
+        socket.emit("gameState", {
+          gameId,
+          state: currentState,
+          validActions: gameService.getValidActions(currentState),
+        });
+      } catch (error) {
+        socket.emit("error", {
+          message: error.message,
+        });
+      }
     });
 
     socket.on("disconnect", () => {
@@ -158,7 +160,7 @@ function setupGameRoutes(gameService, io, validateGameState) {
         validActions: gameService.getValidActions(nextState),
       });
 
-      io.to(gameId).emit(`levelEnded_${gameId}`, {
+      io.to(gameId).emit("levelEnded", {
         gameId,
         result,
         roundComplete: result.currentLevel === 1,

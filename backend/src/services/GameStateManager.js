@@ -17,6 +17,7 @@ class GameStateManager {
       roundStats: [],
       totalScore: 0,
       highestRound: 1,
+      state: "CREATED",
     };
 
     this.activeGames.set(gameId, initialGameState);
@@ -49,6 +50,15 @@ class GameStateManager {
     const game = this.activeGames.get(gameId);
     if (!game) {
       throw new Error("Game not found");
+    }
+
+    if (
+      updates.state &&
+      !this.isValidStateTransition(game.state, updates.state)
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${updates.state}`
+      );
     }
 
     const updatedGame = {

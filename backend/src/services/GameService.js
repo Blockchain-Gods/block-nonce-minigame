@@ -51,6 +51,30 @@ class GameService {
     };
   }
 
+  getValidActions(state) {
+    return Object.entries(this.API_VALIDATION_RULES)
+      .filter(([_, rule]) => rule.validStates.includes(state))
+      .map(([action]) => action);
+  }
+
+  validateStateTransition(currentState, nextState) {
+    const validTransitions = {
+      [this.VALID_STATES.CREATED]: [this.VALID_STATES.LEVEL_STARTED],
+      [this.VALID_STATES.LEVEL_STARTED]: [this.VALID_STATES.LEVEL_ENDED],
+      [this.VALID_STATES.LEVEL_ENDED]: [
+        this.VALID_STATES.LEVEL_STARTED,
+        this.VALID_STATES.ROUND_COMPLETE,
+      ],
+      [this.VALID_STATES.ROUND_COMPLETE]: [
+        this.VALID_STATES.LEVEL_STARTED,
+        this.VALID_STATES.GAME_COMPLETE,
+      ],
+      [this.VALID_STATES.GAME_COMPLETE]: [],
+    };
+
+    return validTransitions[currentState]?.includes(nextState) ?? false;
+  }
+
   // Helper method to validate game access
   validateGameAccess(gameId, address) {
     const game = this.gameStateManager.getGame(gameId);
@@ -87,6 +111,7 @@ class GameService {
       currentLevel: 1,
       roundStats: [],
       totalScore: 0,
+      state: this.VALID_STATES.CREATED,
     };
 
     this.gameStateManager.createGame(gameId, gameState);
@@ -136,6 +161,14 @@ class GameService {
   async startLevel(gameId, address) {
     const game = this.validateGameAccess(gameId, address);
 
+    if (
+      !this.validateStateTransition(game.state, this.VALID_STATES.LEVEL_STARTED)
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${this.VALID_STATES.LEVEL_STARTED}`
+      );
+    }
+
     // Initialize level and round if not defined
     if (!game.currentLevel) {
       game.currentLevel = 1;
@@ -149,9 +182,7 @@ class GameService {
     }
 
     // Initialize level configuration
-    console.log(`Initializing level config for level ${game.currentLevel}`);
     const gameConfig = this.generateGameConfig(game.currentLevel);
-    console.log(`Level config: ${JSON.stringify(gameConfig)}`);
 
     if (!address?.startsWith("guest_")) {
       try {
@@ -162,6 +193,7 @@ class GameService {
         );
       }
     }
+
     const startTime = Date.now();
     const updates = {
       config: gameConfig,
@@ -171,6 +203,7 @@ class GameService {
       isEnded: false,
       currentLevel: game.currentLevel,
       currentRound: game.currentRound,
+      state: this.VALID_STATES.LEVEL_STARTED,
     };
 
     this.gameStateManager.updateGame(gameId, updates);
@@ -185,6 +218,7 @@ class GameService {
       duration: gameConfig.gameDuration / 1000,
       currentLevel: game.currentLevel,
       currentRound: game.currentRound,
+      state: updates.state,
     };
   }
 
@@ -193,6 +227,14 @@ class GameService {
     const game = this.gameStateManager.getGame(gameId);
     // console.log(`GSer game details: ${JSON.stringify(game)}`);
     if (!game || game.isEnded) return null;
+
+    if (
+      !this.validateStateTransition(game.state, this.VALID_STATES.LEVEL_ENDED)
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${this.VALID_STATES.LEVEL_ENDED}`
+      );
+    }
 
     // Calculate level statistics
     const bugsFound = game.clickedCells.filter((cell) =>
@@ -214,45 +256,47 @@ class GameService {
       score: levelScore,
     };
 
-    // Check if this completes the current round
+    // Check completion states
     const isRoundComplete =
       game.currentLevel >= this.GAME_CONFIG.LEVELS_PER_ROUND;
-    // Check if this completes the entire game
     const isGameComplete =
       isRoundComplete && game.currentRound >= this.GAME_CONFIG.MAX_ROUNDS;
 
-    // Update game state with level results
+    // Determine next state
+    let nextState;
+    if (isGameComplete) {
+      nextState = this.VALID_STATES.GAME_COMPLETE;
+    } else if (isRoundComplete) {
+      nextState = this.VALID_STATES.ROUND_COMPLETE;
+    } else {
+      nextState = this.VALID_STATES.LEVEL_ENDED;
+    }
+
+    // Update game state
     const updates = {
       isEnded: true,
-      // currentLevel: game.currentLevel + 1,
       roundStats: [...(game.roundStats || []), levelResult],
       totalScore: (game.totalScore || 0) + levelScore,
+      state: nextState,
     };
 
     if (isGameComplete) {
-      // Handle game completion
       await this.completeGame(gameId, updates);
     } else if (isRoundComplete) {
-      // Handle round completion
       updates.currentLevel = 1;
       updates.currentRound = game.currentRound + 1;
       await this.completeRound(gameId, updates);
     } else {
-      // Continue to next level
       updates.currentLevel = game.currentLevel + 1;
       this.gameStateManager.updateGame(gameId, updates);
-
-      // Emit level completion event
-      this.io.to(gameId).emit("levelEnded", {
-        gameId,
-        result: levelResult,
-        roundComplete: false,
-        currentRound: game.currentRound,
-        totalScore: updates.totalScore,
-      });
     }
 
-    return levelResult;
+    return {
+      ...levelResult,
+      state: nextState,
+      isRoundComplete,
+      isGameComplete,
+    };
   }
 
   calculateLevelScore(bugsFound, totalBugs, totalClicks) {
@@ -299,6 +343,7 @@ class GameService {
       startTime: Date.now(),
       clickedCells: [],
       isEnded: false,
+      state: this.VALID_STATES.LEVEL_STARTED,
     };
 
     // Update game state
@@ -334,15 +379,23 @@ class GameService {
 
   async handleClick(gameId, x, y, address) {
     const game = this.validateGameAccess(gameId, address);
+
+    if (game.state !== this.VALID_STATES.LEVEL_STARTED) {
+      throw new Error("Can only click cells when level is in progress");
+    }
+
     const timePassed = Date.now() - game.startTime;
 
     if (game.isEnded || timePassed >= game.config.gameDuration) {
       throw new Error("Level has ended");
     }
-    console.log(`Player clicked ${x}, ${y}`);
+
     game.clickedCells.push({ x, y });
     this.gameStateManager.updateGame(gameId, game);
-    return { success: true };
+    return {
+      success: true,
+      state: game.state,
+    };
   }
 
   async endGame(gameId, endType = "timeout") {
@@ -360,6 +413,7 @@ class GameService {
       endType,
       endTime: Date.now(),
       timeoutId: null,
+      state: this.VALID_STATES.GAME_COMPLETE,
     };
 
     // Calculate game statistics
@@ -560,33 +614,56 @@ class GameService {
   async completeRound(gameId, updates) {
     const game = this.gameStateManager.getGame(gameId);
 
-    // Update game state with round completion
-    this.gameStateManager.updateGame(gameId, updates);
+    if (
+      !this.validateStateTransition(
+        game.state,
+        this.VALID_STATES.ROUND_COMPLETE
+      )
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${this.VALID_STATES.ROUND_COMPLETE}`
+      );
+    }
 
-    // Calculate round statistics
+    // Update game state with round completion
+    this.gameStateManager.updateGame(gameId, {
+      ...updates,
+      state: this.VALID_STATES.ROUND_COMPLETE,
+    });
+
     const roundStats = {
       round: game.currentRound,
       totalScore: updates.totalScore,
       levels: game.roundStats,
     };
-    console.log("Socket emitting roundComplete event");
-    // Emit round completion event
+
     this.io.to(gameId).emit("roundComplete", {
       gameId,
       roundStats,
       nextRound: updates.currentRound,
       totalScore: updates.totalScore,
+      state: this.VALID_STATES.ROUND_COMPLETE,
+      validActions: this.getValidActions(this.VALID_STATES.ROUND_COMPLETE),
     });
   }
 
   async completeGame(gameId, updates) {
     const game = this.gameStateManager.getGame(gameId);
 
+    if (
+      !this.validateStateTransition(game.state, this.VALID_STATES.GAME_COMPLETE)
+    ) {
+      throw new Error(
+        `Invalid state transition from ${game.state} to ${this.VALID_STATES.GAME_COMPLETE}`
+      );
+    }
+
     // Add final game completion flags
     const finalUpdates = {
       ...updates,
       gameComplete: true,
       finalScore: updates.totalScore,
+      state: this.VALID_STATES.GAME_COMPLETE,
     };
 
     // Update final game state
@@ -616,10 +693,13 @@ class GameService {
     }
     console.log("Socket emitting gameComplete event");
     // Emit game completion event
+
     this.io.to(gameId).emit("gameComplete", {
       gameId,
       gameStats,
       finalScore: updates.totalScore,
+      state: this.VALID_STATES.GAME_COMPLETE,
+      validActions: this.getValidActions(this.VALID_STATES.GAME_COMPLETE),
     });
 
     // Clean up game resources
@@ -648,6 +728,38 @@ class GameService {
     } catch (error) {
       throw new Error(`Transaction failed: ${error.message}`);
     }
+  }
+
+  getGameState(gameId) {
+    const game = this.gameStateManager.getGame(gameId);
+    if (!game) throw new Error("Game not found");
+    return game.state || this.VALID_STATES.CREATED;
+  }
+  async waitForState(gameId, targetState, timeout = 30000) {
+    return new Promise((resolve, reject) => {
+      const game = this.gameStateManager.getGame(gameId);
+      if (!game) reject(new Error("Game not found"));
+
+      if (game.state === targetState) {
+        resolve(true);
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        this.io.off(`stateChanged-${gameId}`, stateChangeHandler);
+        reject(new Error("State wait timeout"));
+      }, timeout);
+
+      const stateChangeHandler = (data) => {
+        if (data.gameId === gameId && data.newState === targetState) {
+          clearTimeout(timeoutId);
+          this.io.off(`stateChanged-${gameId}`, stateChangeHandler);
+          resolve(true);
+        }
+      };
+
+      this.io.on(`stateChanged-${gameId}`, stateChangeHandler);
+    });
   }
 }
 

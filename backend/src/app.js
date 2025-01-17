@@ -7,6 +7,7 @@ const ProofVerifier = require("./services/ProofVerifier");
 const GameService = require("./services/GameService");
 const setupGameRoutes = require("./routes/gameRoutes");
 const { validateAddress } = require("./middlewares/auth");
+const createStateValidationMiddleware = require("./middlewares/stateValidation");
 const http = require("http");
 const { Server } = require("socket.io");
 const cookieParser = require("cookie-parser");

@@ -4,10 +4,15 @@ import {
   GameState,
   PlayerStats,
   Position,
+  GameStateResponse,
+  ApiError,
+  StateValidationError,
+  GameStateData,
 } from "@/types/game";
 import axios, { AxiosError } from "axios";
 import { io, Socket } from "socket.io-client";
 import Cookies from "js-cookie";
+import { gameStateManager } from "./GameStateManager";
 
 // API Types
 interface GameResponse {
@@ -30,18 +35,6 @@ interface PlayerIdentifier {
   isGuest: boolean;
 }
 
-// API Error
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number,
-    public code?: string
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
 // API Configuration
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001";
@@ -49,18 +42,59 @@ const ROUTE_URL = API_BASE_URL + "/api/game";
 const TIMEOUT = 10000; // 10 seconds
 
 let socket: Socket | null = null;
+
+let currentGameState: string | null = null;
+let validActions: string[] = [];
+
 export const initializeSocket = () => {
   if (!socket) {
     socket = io(API_BASE_URL);
+
     socket.on("connect", () => {
       console.log("Connected to game server");
     });
 
-    socket.on("disconnect", () => {
-      console.log("Disconnected from game server");
+    socket.on("gameState", (data: GameStateData) => {
+      gameStateManager.updateState(data.currentState, data.validActions);
     });
+
+    socket.on(
+      "stateChanged",
+      (data: { newState: string; validActions: string[] }) => {
+        gameStateManager.updateState(data.newState, data.validActions);
+      }
+    );
   }
   return socket;
+};
+
+const validateActionState = (action: string): boolean => {
+  return validActions.includes(action);
+};
+
+export const waitForValidState = (
+  targetState: string,
+  timeout = 30000
+): Promise<boolean> => {
+  return new Promise((resolve, reject) => {
+    if (gameStateManager.getCurrentState() === targetState) {
+      resolve(true);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      reject(new Error("State wait timeout"));
+    }, timeout);
+
+    const stateChangeHandler = (newState: string) => {
+      if (newState === targetState) {
+        clearTimeout(timeoutId);
+        resolve(true);
+      }
+    };
+
+    gameStateManager.onStateChange(stateChangeHandler);
+  });
 };
 
 const getPlayerIdentifier = (address?: string): PlayerIdentifier => {
@@ -137,12 +171,49 @@ export const startLevel = async (
   gameId: string
 ): Promise<GameConfig> => {
   try {
+    if (!gameStateManager.isActionValid("startLevel")) {
+      throw new ApiError(
+        "Cannot start level in current state",
+        409,
+        "INVALID_STATE",
+        gameStateManager.getCurrentState(),
+        ["CREATED", "LEVEL_ENDED", "ROUND_COMPLETE"]
+      );
+    }
+
     const response = await apiClient.post<GameConfig>(
       `/start-level/${gameId}`,
-      {
-        address,
-      }
+      { address }
     );
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as AxiosError);
+  }
+};
+
+export const clickCell = async (
+  gameId: string,
+  position: Position,
+  address: string
+): Promise<ClickResponse> => {
+  try {
+    if (!gameStateManager.isActionValid("handleClick")) {
+      throw new ApiError(
+        "Cannot click cells in current state",
+        409,
+        "INVALID_STATE",
+        gameStateManager.getCurrentState(),
+        ["LEVEL_STARTED"]
+      );
+    }
+
+    const { address: playerAddress } = getPlayerIdentifier(address);
+    const response = await apiClient.post<ClickResponse>("/click", {
+      gameId,
+      x: position.x,
+      y: position.y,
+      address: playerAddress,
+    });
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -151,7 +222,16 @@ export const startLevel = async (
 
 export const endLevel = async (gameId: string, address: string) => {
   try {
-    console.log(`End level: ${gameId}`);
+    if (!gameStateManager.isActionValid("endLevel")) {
+      throw new ApiError(
+        "Cannot end level in current state",
+        409,
+        "INVALID_STATE",
+        gameStateManager.getCurrentState(),
+        ["LEVEL_STARTED"]
+      );
+    }
+
     const response = await apiClient.post<GameResponse>("/end-level", {
       gameId,
       address,
@@ -219,12 +299,15 @@ export const startGame = async (
 export const getGameState = async (
   address: string,
   gameId: string
-): Promise<GameState> => {
+): Promise<GameStateResponse> => {
   try {
     const { address: playerAddress } = getPlayerIdentifier(address);
-    const response = await apiClient.get<GameState>(`/game-state/${gameId}`, {
-      params: { address: playerAddress },
-    });
+    const response = await apiClient.get<GameStateResponse>(
+      `/game-state/${gameId}`,
+      {
+        params: { address: playerAddress },
+      }
+    );
 
     return response.data;
   } catch (error) {
@@ -234,10 +317,13 @@ export const getGameState = async (
 
 export const updateGameState = async (
   gameId: string,
-  update: Partial<GameState>
-): Promise<GameState> => {
+  update: Partial<GameStateResponse>
+): Promise<GameStateResponse> => {
   try {
-    const response = await apiClient.patch<GameState>(`/${gameId}`, update);
+    const response = await apiClient.patch<GameStateResponse>(
+      `/${gameId}`,
+      update
+    );
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -249,17 +335,26 @@ export const endGame = async (
   address: string
 ): Promise<GameEndData> => {
   try {
+    if (!gameStateManager.isActionValid("endGame")) {
+      throw new ApiError(
+        "Cannot end game in current state",
+        409,
+        "INVALID_STATE",
+        gameStateManager.getCurrentState(),
+        ["LEVEL_ENDED", "ROUND_COMPLETE"]
+      );
+    }
+
     const { address: playerAddress, isGuest } = getPlayerIdentifier(address);
     const response = await apiClient.post<GameEndData>(
       `/end-game`,
       {
         gameId,
         address: playerAddress,
-        isGuest, // To let backend know if it's a guest
+        isGuest,
       },
       { timeout: 120000 }
     );
-    console.log(`End game response data: ${JSON.stringify(response.data)}`);
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);
@@ -312,25 +407,6 @@ export const getPlayerStats = async (address: string): Promise<PlayerStats> => {
       params: { address: playerAddress },
     });
 
-    return response.data;
-  } catch (error) {
-    return handleApiError(error as AxiosError);
-  }
-};
-
-export const clickCell = async (
-  gameId: string,
-  position: Position,
-  address: string
-): Promise<ClickResponse> => {
-  try {
-    const { address: playerAddress } = getPlayerIdentifier(address);
-    const response = await apiClient.post<ClickResponse>("/click", {
-      gameId,
-      x: position.x,
-      y: position.y,
-      address: playerAddress,
-    });
     return response.data;
   } catch (error) {
     return handleApiError(error as AxiosError);
