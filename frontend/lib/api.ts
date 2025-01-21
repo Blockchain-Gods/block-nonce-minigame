@@ -56,20 +56,29 @@ export const initializeSocket = () => {
 
     socket.on("gameState", (data: GameStateData) => {
       console.log("Received gameState:", data);
-      gameStateManager.updateState(data.state, data.validActions);
+      if (data.state && data.validActions) {
+        gameStateManager.updateState(data.state, data.validActions);
+      }
     });
 
     socket.on(
       "stateChanged",
       (data: { newState: string; validActions: string[] }) => {
         console.log("State changed:", data);
-        gameStateManager.updateState(data.newState, data.validActions);
+        if (data.newState && data.validActions) {
+          gameStateManager.updateState(data.newState, data.validActions);
+        }
       }
     );
 
-    // Add error handling for socket
+    // error handling for socket
     socket.on("error", (error: any) => {
       console.error("Socket error:", error);
+    });
+
+    // debug event listner
+    socket.onAny((eventName, ...args) => {
+      console.log(`Received socket event "${eventName}":`, args);
     });
 
     socket.on("disconnect", () => {
@@ -178,6 +187,9 @@ export const joinGameRoom = (gameId: string) => {
   if (socket) {
     socket.emit("joinGame", gameId);
     console.log(`Joined game room: ${gameId}`);
+
+    // Request current state immediately after joining
+    socket.emit("requestGameState", gameId);
   }
 };
 
@@ -233,14 +245,24 @@ export const clickCell = async (
   address: string
 ): Promise<ClickResponse> => {
   try {
+    const currentState = gameStateManager.getCurrentState();
+    const validActions = gameStateManager.getValidActions();
+    console.log(`[clickCell] Attempting click with state:`, {
+      currentState,
+      validActions,
+      position,
+    });
+
     if (!gameStateManager.isActionValid("handleClick")) {
-      throw new ApiError(
+      const error = new ApiError(
         "Cannot click cells in current state",
         409,
         "INVALID_STATE",
-        gameStateManager.getCurrentState(),
+        currentState,
         ["LEVEL_STARTED"]
       );
+      console.error("[clickCell] State validation failed:", error);
+      throw error;
     }
 
     const { address: playerAddress } = getPlayerIdentifier(address);
@@ -250,8 +272,11 @@ export const clickCell = async (
       y: position.y,
       address: playerAddress,
     });
+    // console.log(`Clicked cell response data: ${JSON.stringify(response.data)}`);
     return response.data;
   } catch (error) {
+    console.error("[clickCell] Error:", error);
+
     return handleApiError(error as AxiosError);
   }
 };
@@ -324,6 +349,9 @@ export const startGame = async (
     const response = await apiClient.post<GameConfig>(`/start-game/${gameId}`, {
       address: playerAddress,
     });
+
+    gameStateManager.setGameId(gameId);
+    gameStateManager.updateState("LEVEL_STARTED", ["handleClick", "endLevel"]);
 
     joinGameRoom(gameId);
     return response.data;

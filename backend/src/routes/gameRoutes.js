@@ -9,17 +9,36 @@ function setupGameRoutes(gameService, io, validateGameState) {
     socket.on("joinGame", (gameId) => {
       try {
         socket.join(gameId);
+        console.log(`Client joined game room: ${gameId}`);
+
         const currentState = gameService.getGameState(gameId);
+        const validActions = gameService.getValidActions(currentState);
+
+        console.log(`Sending initial state to client:`, {
+          state: currentState,
+          validActions,
+        });
+
         socket.emit("gameState", {
           gameId,
           state: currentState,
-          validActions: gameService.getValidActions(currentState),
+          validActions,
         });
       } catch (error) {
         socket.emit("error", {
           message: error.message,
         });
       }
+    });
+
+    socket.on("requestGameState", (gameId) => {
+      const currentState = gameService.getGameState(gameId);
+      const validActions = gameService.getValidActions(currentState);
+      socket.emit("gameState", {
+        gameId,
+        state: currentState,
+        validActions,
+      });
     });
 
     socket.on("disconnect", () => {

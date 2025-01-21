@@ -3,6 +3,7 @@ class GameStateManager {
   private currentState: string = "CREATED";
   private validActions: string[] = [];
   private stateChangeCallbacks: ((state: string) => void)[] = [];
+  private gameId: string | null = null;
 
   private constructor() {}
 
@@ -13,18 +14,31 @@ class GameStateManager {
     return GameStateManager.instance;
   }
 
+  setGameId(gameId: string) {
+    this.gameId = gameId;
+  }
+
   updateState(state: string, actions: string[]) {
     console.log(`Updating state to ${state} with actions:`, actions);
+    const oldState = this.currentState;
     this.currentState = state;
     this.validActions = actions;
-    this.stateChangeCallbacks.forEach((callback) => callback(state));
+
+    if (oldState !== state) {
+      console.log(
+        `[GameStateManager] State changed from ${oldState} to ${state}`
+      );
+      this.stateChangeCallbacks.forEach((callback) => callback(state));
+    }
   }
 
   getCurrentState(): string {
+    console.log(`Current State: ${this.currentState}`);
     return this.currentState;
   }
 
   getValidActions(): string[] {
+    console.log(`Current State: ${this.validActions}`);
     return [...this.validActions];
   }
 
@@ -46,7 +60,14 @@ class GameStateManager {
   }
 
   isActionValid(action: string): boolean {
-    return this.validActions.includes(action);
+    const isValid = this.validActions.includes(action);
+
+    console.log(`[GameStateManager] Checking if action "${action}" is valid:`, {
+      currentState: this.currentState,
+      validActions: this.validActions,
+      isValid,
+    });
+    return isValid;
   }
 
   // Optional: method to clear all listeners
@@ -58,6 +79,14 @@ class GameStateManager {
   // Optional: Debug method to check number of active listeners
   getListenerCount(): number {
     return this.stateChangeCallbacks.length;
+  }
+
+  reset() {
+    console.log("[GameStateManager] Resetting state");
+    this.currentState = "CREATED";
+    this.validActions = [];
+    this.gameId = null;
+    this.clearStateChangeListeners();
   }
 }
 

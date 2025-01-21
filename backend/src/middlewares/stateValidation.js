@@ -15,6 +15,8 @@ const createStateValidationMiddleware = (gameService) => {
       return next(); // Skip validation if no gameId (for create-game, etc.)
     }
 
+    console.log(`Action Name: ${actionName}`);
+
     try {
       await gameService.validateApiCall(gameId, actionName);
       // Add current state to request object for use in routes
