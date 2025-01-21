@@ -143,9 +143,10 @@ function setupGameRoutes(gameService, io, validateGameState) {
   // Handle cell clicks
   router.post("/click", validateGameState("handleClick"), async (req, res) => {
     const { gameId, x, y, address } = req.body;
-
+    console.log(`[click] Validating game state`);
     try {
       const result = await gameService.handleClick(gameId, x, y, address);
+      // console.log(`[click] result: ${JSON.stringify(result)}`);
       res.json({
         ...result,
         state: req.gameState,

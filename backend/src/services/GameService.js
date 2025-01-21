@@ -102,7 +102,13 @@ class GameService {
   }
 
   async updateGameWithStateValidation(gameId, updates) {
+    console.log(
+      `[updateGameWithStateValidation updates: ${JSON.stringify(updates)}`
+    );
     const game = this.gameStateManager.getGame(gameId);
+    console.log(
+      `[updateGameWithStateValidation] game: ${JSON.stringify(game)}`
+    );
     if (!game) {
       throw new Error("Game not found");
     }
@@ -117,12 +123,15 @@ class GameService {
       );
     }
 
+    console.log(`[updateGameWithStateValidation] updating game`);
+
     return this.gameStateManager.updateGame(gameId, updates);
   }
 
   // Helper method to validate game access
   validateGameAccess(gameId, address) {
     const game = this.gameStateManager.getGame(gameId);
+    // console.log(`[validateGameAccess] game`);
 
     if (!game) {
       throw new Error("Game not found");
@@ -436,7 +445,10 @@ class GameService {
     }
 
     game.clickedCells.push({ x, y });
-    await this.updateGameWithStateValidation(gameId, updates);
+    console.log(`[handleClick] pushed clicked cells`);
+    await this.updateGameWithStateValidation(gameId, address);
+
+    console.log(`[handleClick] updated game state`);
     return {
       success: true,
       state: game.state,

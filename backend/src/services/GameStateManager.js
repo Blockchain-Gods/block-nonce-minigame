@@ -40,7 +40,9 @@ class GameStateManager {
   // TODO: Runs at page refresh even with a new gameId. So games played remain the same.
   getGame(gameId) {
     const game = this.activeGames.get(gameId);
+    // console.log(`[GSM getGame] active game: ${JSON.stringify(game)}`);
     if (!game) {
+      // console.log(`Returning null`);
       return null;
     }
     return { ...game }; // Return a copy to prevent direct state mutation
