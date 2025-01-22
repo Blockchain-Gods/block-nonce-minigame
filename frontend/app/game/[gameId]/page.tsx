@@ -75,6 +75,7 @@ export default function GamePage() {
   const [roundHasEnded, setRoundHasEnded] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
 
+  const [showGameComplete, setShowGameComplete] = useState(false);
   // Initialize playerIdentifier on mount
   useEffect(() => {
     const guestId = Cookies.get("guestId");
@@ -150,23 +151,38 @@ export default function GamePage() {
     });
 
     setupLevelEndListener(gameId, async (data) => {
-      if (!data || !data.result) {
-        console.error("Invalid level end data received");
-        return;
+      // if (!data || !data.result) {
+      //   console.error("Invalid level end data received");
+      //   return;
+      // }
+
+      // const { result, roundComplete } = data;
+      // setLevelStats(result);
+      // setShowLevelSummary(true);
+      // setIsEnding(true);
+
+      // if (roundComplete) {
+      //   console.log("Round complete");
+      //   setRoundHasEnded(true);
+      //   await waitForValidState("ROUND_COMPLETE");
+      // }
+
+      // setRoundStats((prev) => [...prev, result]);
+      console.log("Level end data received:", data);
+      const { state, validActions, isRoundComplete, isGameComplete } = data;
+
+      if (isGameComplete) {
+        setShowGameComplete(true);
+      } else if (isRoundComplete) {
+        setShowRoundSummary(true);
+      } else {
+        setShowLevelSummary(true);
       }
 
-      const { result, roundComplete } = data;
-      setLevelStats(result);
-      setShowLevelSummary(true);
-      setIsEnding(true);
-
-      if (roundComplete) {
-        console.log("Round complete");
-        setRoundHasEnded(true);
-        await waitForValidState("ROUND_COMPLETE");
+      // Additional state handling based on the response
+      if (data.result) {
+        setLevelStats(data.result);
       }
-
-      setRoundStats((prev) => [...prev, result]);
     });
 
     setupGameEndListener(gameId, (data) => {
@@ -180,6 +196,7 @@ export default function GamePage() {
       cleanupGameListeners(gameId);
       socket.off("gameState");
       socket.off("stateChanged");
+      socket.off("levelEnded");
     };
   }, [gameId]);
 
@@ -189,6 +206,7 @@ export default function GamePage() {
 
   const handleEndLevel = async () => {
     if (!playerIdentifier || !gameId) return;
+
     if (!validActions.includes("endLevel")) {
       toast({
         variant: "destructive",
@@ -200,7 +218,8 @@ export default function GamePage() {
 
     try {
       setIsEnding(true);
-      await endLevel(gameId, playerIdentifier);
+      const result = await endLevel(gameId, playerIdentifier);
+      console.log("Level end result:", result);
     } catch (error: any) {
       if (error instanceof ApiError && error.code === "INVALID_STATE") {
         toast({
@@ -209,12 +228,12 @@ export default function GamePage() {
           description: `Expected states: ${error.expectedStates?.join(", ")}`,
         });
         // Optionally wait for valid state
-        try {
-          await waitForValidState("LEVEL_STARTED");
-          await handleEndLevel();
-        } catch (waitError) {
-          console.error("Error waiting for valid state:", waitError);
-        }
+        // try {
+        //   await waitForValidState("LEVEL_STARTED");
+        //   await handleEndLevel();
+        // } catch (waitError) {
+        //   console.error("Error waiting for valid state:", waitError);
+        // }
       } else {
         console.error("Error ending level:", error);
         toast({

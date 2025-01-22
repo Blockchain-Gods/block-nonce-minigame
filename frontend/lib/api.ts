@@ -198,8 +198,18 @@ export const setupLevelEndListener = (
   callback: (data: any) => void
 ) => {
   if (socket) {
-    console.log("Level ended");
-    socket.on(`levelEnded`, callback);
+    console.log("Setting up level end listener");
+    // Remove any existing listeners to prevent duplicates
+    socket.off("levelEnded");
+
+    socket.on("levelEnded", (data) => {
+      console.log("Level ended event received:", data);
+      // Update game state manager with new state
+      if (data.state && data.validActions) {
+        gameStateManager.updateState(data.state, data.validActions);
+      }
+      callback(data);
+    });
   }
 };
 
@@ -283,6 +293,9 @@ export const clickCell = async (
 
 export const endLevel = async (gameId: string, address: string) => {
   try {
+    const currentState = gameStateManager.getCurrentState();
+    console.log("Attempting to end level. Current state:", currentState);
+
     if (!gameStateManager.isActionValid("endLevel")) {
       throw new ApiError(
         "Cannot end level in current state",

@@ -161,14 +161,15 @@ function setupGameRoutes(gameService, io, validateGameState) {
     const { gameId, address } = req.body;
 
     try {
-      console.log("GRou Ending level");
+      console.log("[end-level] Ending level");
       const result = await gameService.endLevel(gameId, "manual");
 
+      console.log(`[end-level] Level ended with result: ${result}`);
       // Determine next state based on game progress
-      const nextState = result.roundComplete
-        ? result.gameComplete
-          ? gameService.VALID_STATES.GAME_COMPLETE
-          : gameService.VALID_STATES.ROUND_COMPLETE
+      const nextState = result.isGameComplete
+        ? gameService.VALID_STATES.GAME_COMPLETE
+        : result.isRoundComplete
+        ? gameService.VALID_STATES.ROUND_COMPLETE
         : gameService.VALID_STATES.LEVEL_ENDED;
 
       console.log(`GRou ending result: ${JSON.stringify(result)}`);
@@ -180,14 +181,24 @@ function setupGameRoutes(gameService, io, validateGameState) {
         validActions: gameService.getValidActions(nextState),
       });
 
+      // io.to(gameId).emit("levelEnded", {
+      //   gameId,
+      //   result,
+      //   roundComplete: result.currentLevel === 1,
+      //   currentRound: result.currentRound,
+      //   state: nextState,
+      //   nextValidActions: gameService.getValidActions(nextState),
+      // });
       io.to(gameId).emit("levelEnded", {
         gameId,
         result,
-        roundComplete: result.currentLevel === 1,
-        currentRound: result.currentRound,
         state: nextState,
-        nextValidActions: gameService.getValidActions(nextState),
+        validActions: gameService.getValidActions(nextState),
+        isRoundComplete: result.isRoundComplete,
+        isGameComplete: result.isGameComplete,
+        currentRound: result.currentRound,
       });
+      console.log("[io-levelEnded] levelEnded signal emitted");
 
       res.json({
         success: true,

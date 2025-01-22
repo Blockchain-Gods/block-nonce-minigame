@@ -11,7 +11,7 @@ class GameService {
       MAX_BUGS: 10, //change back to 10
       MIN_GRID_SIZE: 8,
       MAX_GRID_SIZE: 16, //change back to 16
-      GAME_DURATION: 35000, // 35 seconds
+      GAME_DURATION: 5000, // 35 seconds
       LEVELS_PER_ROUND: 2,
       MAX_ROUNDS: 3,
 
@@ -102,13 +102,13 @@ class GameService {
   }
 
   async updateGameWithStateValidation(gameId, updates) {
-    console.log(
-      `[updateGameWithStateValidation updates: ${JSON.stringify(updates)}`
-    );
+    // console.log(
+    //   `[updateGameWithStateValidation updates: ${JSON.stringify(updates)}`
+    // );
     const game = this.gameStateManager.getGame(gameId);
-    console.log(
-      `[updateGameWithStateValidation] game: ${JSON.stringify(game)}`
-    );
+    // console.log(
+    //   `[updateGameWithStateValidation] game: ${JSON.stringify(game)}`
+    // );
     if (!game) {
       throw new Error("Game not found");
     }
@@ -123,9 +123,15 @@ class GameService {
       );
     }
 
-    console.log(`[updateGameWithStateValidation] updating game`);
+    // console.log(`[updateGameWithStateValidation] updating game`);
+    const updateGame = this.gameStateManager.updateGame(gameId, updates);
 
-    return this.gameStateManager.updateGame(gameId, updates);
+    // console.log(
+    //   `[updateGameWithStateValidation] updateGame: ${JSON.stringify(
+    //     updateGame
+    //   )}`
+    // );
+    return updateGame;
   }
 
   // Helper method to validate game access
@@ -263,6 +269,13 @@ class GameService {
     await this.updateGameWithStateValidation(gameId, updates);
     this.setGameEndTimer(gameId, gameConfig.gameDuration);
 
+    // Emit state change event
+    this.io.to(gameId).emit("stateChanged", {
+      gameId,
+      newState: this.VALID_STATES.LEVEL_STARTED,
+      validActions: this.getValidActions(this.VALID_STATES.LEVEL_STARTED),
+    });
+
     return {
       gameId,
       gridSize: gameConfig.gridSize,
@@ -277,7 +290,7 @@ class GameService {
   }
 
   async endLevel(gameId, endType = "timeout") {
-    console.log("GSer Ending level");
+    // console.log("GSer Ending level");
     const game = this.gameStateManager.getGame(gameId);
     // console.log(`GSer game details: ${JSON.stringify(game)}`);
     if (!game || game.isEnded) return null;
@@ -345,6 +358,23 @@ class GameService {
       await this.updateGameWithStateValidation(gameId, updates);
     }
 
+    this.io.to(gameId).emit("stateChanged", {
+      gameId,
+      newState: nextState,
+      validActions: this.getValidActions(nextState),
+    });
+
+    this.io.to(gameId).emit("levelEnded", {
+      gameId,
+      result: levelResult,
+      state: nextState,
+      validActions: this.getValidActions(nextState),
+      isRoundComplete,
+      isGameComplete,
+      currentRound: updates.currentRound,
+    });
+
+    console.log(`GSer endLevel returning...`);
     return {
       ...levelResult,
       state: nextState,
@@ -424,6 +454,7 @@ class GameService {
 
     game.timeoutId = setTimeout(async () => {
       try {
+        console.log(`GSer startgame setGameEndTimer timeout`);
         await this.endLevel(gameId, "timeout");
       } catch (error) {
         console.error(`Error ending game ${gameId}:`, error);
