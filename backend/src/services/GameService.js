@@ -60,11 +60,12 @@ class GameService {
   validateStateTransition(currentState, nextState) {
     const validTransitions = {
       [this.VALID_STATES.CREATED]: [this.VALID_STATES.LEVEL_STARTED],
-      [this.VALID_STATES.LEVEL_STARTED]: [this.VALID_STATES.LEVEL_ENDED],
-      [this.VALID_STATES.LEVEL_ENDED]: [
-        this.VALID_STATES.LEVEL_STARTED,
+      [this.VALID_STATES.LEVEL_STARTED]: [
+        this.VALID_STATES.LEVEL_ENDED,
         this.VALID_STATES.ROUND_COMPLETE,
+        this.VALID_STATES.GAME_COMPLETE,
       ],
+      [this.VALID_STATES.LEVEL_ENDED]: [this.VALID_STATES.LEVEL_STARTED],
       [this.VALID_STATES.ROUND_COMPLETE]: [
         this.VALID_STATES.LEVEL_STARTED,
         this.VALID_STATES.GAME_COMPLETE,
@@ -290,10 +291,15 @@ class GameService {
   }
 
   async endLevel(gameId, endType = "timeout") {
-    // console.log("GSer Ending level");
+    console.log(
+      `[endLevel] Starting level end for game ${gameId}. Type: ${endType}`
+    );
     const game = this.gameStateManager.getGame(gameId);
-    // console.log(`GSer game details: ${JSON.stringify(game)}`);
-    if (!game || game.isEnded) return null;
+
+    if (!game || game.isEnded) {
+      console.log(`[endLevel] Game ${gameId} already ended or not found`);
+      return null;
+    }
 
     if (
       !this.validateStateTransition(game.state, this.VALID_STATES.LEVEL_ENDED)
@@ -323,41 +329,48 @@ class GameService {
       score: levelScore,
     };
 
-    // Check completion states
     const isRoundComplete =
       game.currentLevel >= this.GAME_CONFIG.LEVELS_PER_ROUND;
     const isGameComplete =
       isRoundComplete && game.currentRound >= this.GAME_CONFIG.MAX_ROUNDS;
 
-    // Determine next state
-    let nextState;
-    if (isGameComplete) {
-      nextState = this.VALID_STATES.GAME_COMPLETE;
-    } else if (isRoundComplete) {
-      nextState = this.VALID_STATES.ROUND_COMPLETE;
-    } else {
-      nextState = this.VALID_STATES.LEVEL_ENDED;
-    }
-
-    // Update game state
-    const updates = {
+    // First transition to LEVEL_ENDED
+    let nextState = this.VALID_STATES.LEVEL_ENDED;
+    const initialUpdates = {
       isEnded: true,
       roundStats: [...(game.roundStats || []), levelResult],
       totalScore: (game.totalScore || 0) + levelScore,
       state: nextState,
     };
 
+    // Handle round/game completion
     if (isGameComplete) {
-      await this.completeGame(gameId, updates);
+      console.log(`[endLevel] isGameComplete condition met`);
+      await this.completeGame(gameId, {
+        ...initialUpdates,
+        state: this.VALID_STATES.GAME_COMPLETE,
+      });
+      nextState = this.VALID_STATES.GAME_COMPLETE;
     } else if (isRoundComplete) {
-      updates.currentLevel = 1;
-      updates.currentRound = game.currentRound + 1;
-      await this.completeRound(gameId, updates);
+      console.log(`[endLevel] isRoundComplete condition met`);
+
+      await this.completeRound(gameId, {
+        ...initialUpdates,
+        state: this.VALID_STATES.ROUND_COMPLETE,
+        currentLevel: 1,
+        currentRound: game.currentRound + 1,
+      });
+      nextState = this.VALID_STATES.ROUND_COMPLETE;
     } else {
-      updates.currentLevel = game.currentLevel + 1;
-      await this.updateGameWithStateValidation(gameId, updates);
+      console.log(`[endLevel] else condition met`);
+
+      await this.updateGameWithStateValidation(gameId, {
+        ...initialUpdates,
+        currentLevel: game.currentLevel + 1,
+      });
     }
 
+    // Emit events
     this.io.to(gameId).emit("stateChanged", {
       gameId,
       newState: nextState,
@@ -371,10 +384,10 @@ class GameService {
       validActions: this.getValidActions(nextState),
       isRoundComplete,
       isGameComplete,
-      currentRound: updates.currentRound,
+      currentRound: game.currentRound + 1,
+      endType,
     });
 
-    console.log(`GSer endLevel returning...`);
     return {
       ...levelResult,
       state: nextState,
@@ -454,10 +467,18 @@ class GameService {
 
     game.timeoutId = setTimeout(async () => {
       try {
-        console.log(`GSer startgame setGameEndTimer timeout`);
-        await this.endLevel(gameId, "timeout");
+        console.log(`[setGameEndTimer] timeout for game ${gameId}`);
+        const currentGame = this.gameStateManager.getGame(gameId);
+        // Only attempt to end level if in correct state
+        if (currentGame.state === this.VALID_STATES.LEVEL_STARTED) {
+          await this.endLevel(gameId, "timeout");
+        } else {
+          console.log(
+            `[setGameEndTimer] Skipping level end - invalid state: ${currentGame.state}`
+          );
+        }
       } catch (error) {
-        console.error(`Error ending game ${gameId}:`, error);
+        console.error(`[setGameEndTimer] Error ending game ${gameId}:`, error);
       }
     }, duration);
   }

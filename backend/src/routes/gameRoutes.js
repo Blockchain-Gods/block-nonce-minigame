@@ -239,7 +239,7 @@ function setupGameRoutes(gameService, io, validateGameState) {
         state: gameService.VALID_STATES.GAME_COMPLETE,
       });
     } catch (error) {
-      console.error(`Error ending game ${gameId}:`, error);
+      console.error(`GRou Error ending game ${gameId}:`, error);
       res.status(500).json({ error: error.message });
     }
   });
