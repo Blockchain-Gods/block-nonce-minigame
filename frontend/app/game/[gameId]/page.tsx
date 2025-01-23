@@ -22,6 +22,7 @@ import {
   initializeSocket,
   setupGameEndListener,
   setupLevelEndListener,
+  setupRoundCompleteListener,
   waitForValidState,
 } from "@/lib/api";
 import IsometricGrid from "@/components/IsometricGrid";
@@ -168,7 +169,7 @@ export default function GamePage() {
       // }
 
       // setRoundStats((prev) => [...prev, result]);
-      console.log("Level end data received:", data);
+      console.log("Level end data received:", JSON.stringify(data));
       const { state, validActions, isRoundComplete, isGameComplete } = data;
 
       if (isGameComplete) {
@@ -185,6 +186,15 @@ export default function GamePage() {
       }
     });
 
+    setupRoundCompleteListener(gameId, (data) => {
+      console.log(
+        "[setupRoundCompleteListener] Round end data received:",
+        JSON.stringify(data)
+      );
+      setShowLevelSummary(true);
+      setShowRoundSummary(true);
+    });
+
     setupGameEndListener(gameId, (data) => {
       setVerificationInProg(data.result.verificationInProgress);
       setEndType(data.result.endType);
@@ -194,9 +204,9 @@ export default function GamePage() {
 
     return () => {
       cleanupGameListeners(gameId);
-      socket.off("gameState");
-      socket.off("stateChanged");
-      socket.off("levelEnded");
+      // socket.off("gameState");
+      // socket.off("stateChanged");
+      // socket.off("levelEnded");
     };
   }, [gameId]);
 
@@ -291,14 +301,14 @@ export default function GamePage() {
 
   const handleCellReveal = async (position: Position) => {
     if (!playerIdentifier || !gameId) return;
-    if (!validActions.includes("handleClick")) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Action",
-        description: "Cannot click cells in current state",
-      });
-      return;
-    }
+    // if (!validActions.includes("handleClick")) {
+    //   toast({
+    //     variant: "destructive",
+    //     title: "Invalid Action",
+    //     description: "Cannot click cells in current state",
+    //   });
+    //   return;
+    // }
 
     try {
       await clickCell(gameId, position, playerIdentifier);

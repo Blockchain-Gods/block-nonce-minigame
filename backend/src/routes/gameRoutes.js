@@ -132,7 +132,7 @@ function setupGameRoutes(gameService, io, validateGameState) {
         });
 
         console.log(`Starting level with data: \n${JSON.stringify(gameData)}`);
-        res.json({ ...gameData, state: req.gameState });
+        res.json({ ...gameData, validActions: ["handleClick", "endLevel"] });
       } catch (error) {
         console.error(`Error starting level: ${error.message}`);
         res.status(400).json({ error: error.message });

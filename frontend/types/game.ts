@@ -1,8 +1,14 @@
 export interface GameConfig {
-  startTime: number;
-  duration: number;
+  gameId?: number;
   gridSize: number;
   bugs: Position[];
+  numBugs?: number;
+  startTime: number;
+  duration: number;
+  currentLevel?: number;
+  currentRound?: number;
+  state?: ValidState;
+  validActions?: string[];
 }
 
 export interface GameConfigShort {

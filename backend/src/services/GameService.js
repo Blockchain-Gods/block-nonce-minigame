@@ -83,6 +83,10 @@ class GameService {
     }
 
     const currentState = game.state || this.VALID_STATES.CREATED;
+    console.log(
+      `[validateApiCall] Game state: ${currentState}, Action: ${actionName}`
+    );
+
     const validationRule = this.API_VALIDATION_RULES[actionName];
 
     if (!validationRule) {
@@ -124,7 +128,9 @@ class GameService {
       );
     }
 
-    // console.log(`[updateGameWithStateValidation] updating game`);
+    console.log(
+      `[updateGameWithStateValidation] updating game with update state: ${updates.state}`
+    );
     const updateGame = this.gameStateManager.updateGame(gameId, updates);
 
     // console.log(
@@ -220,6 +226,7 @@ class GameService {
   }
 
   async startLevel(gameId, address) {
+    console.log(`[startLevel]...`);
     const game = this.validateGameAccess(gameId, address);
 
     if (
@@ -231,12 +238,8 @@ class GameService {
     }
 
     // Initialize level and round if not defined
-    if (!game.currentLevel) {
-      game.currentLevel = 1;
-    }
-    if (!game.currentRound) {
-      game.currentRound = 1;
-    }
+    if (!game.currentLevel) game.currentLevel = 1;
+    if (!game.currentRound) game.currentRound = 1;
 
     if (game.currentLevel > this.GAME_CONFIG.LEVELS_PER_ROUND) {
       throw new Error("Round is complete");
@@ -267,7 +270,10 @@ class GameService {
       state: this.VALID_STATES.LEVEL_STARTED,
     };
 
-    await this.updateGameWithStateValidation(gameId, updates);
+    const updatedGame = await this.updateGameWithStateValidation(
+      gameId,
+      updates
+    );
     this.setGameEndTimer(gameId, gameConfig.gameDuration);
 
     // Emit state change event
@@ -277,6 +283,7 @@ class GameService {
       validActions: this.getValidActions(this.VALID_STATES.LEVEL_STARTED),
     });
 
+    console.log(`[startLevel] GS state: ${updates.state}`);
     return {
       gameId,
       gridSize: gameConfig.gridSize,
@@ -286,7 +293,7 @@ class GameService {
       duration: gameConfig.gameDuration / 1000,
       currentLevel: game.currentLevel,
       currentRound: game.currentRound,
-      state: updates.state,
+      state: updatedGame.state,
     };
   }
 
@@ -334,6 +341,13 @@ class GameService {
     const isGameComplete =
       isRoundComplete && game.currentRound >= this.GAME_CONFIG.MAX_ROUNDS;
 
+    // First update the game state to LEVEL_ENDED
+    // await this.updateGameWithStateValidation(gameId, {
+    //   isEnded: true,
+    //   roundStats: [...(game.roundStats || []), levelResult],
+    //   totalScore: (game.totalScore || 0) + levelScore,
+    //   state: this.VALID_STATES.LEVEL_ENDED,
+    // });
     // First transition to LEVEL_ENDED
     let nextState = this.VALID_STATES.LEVEL_ENDED;
     const initialUpdates = {
@@ -471,6 +485,7 @@ class GameService {
         const currentGame = this.gameStateManager.getGame(gameId);
         // Only attempt to end level if in correct state
         if (currentGame.state === this.VALID_STATES.LEVEL_STARTED) {
+          console.log(`[setGameEndTimer] running this.endLevel`);
           await this.endLevel(gameId, "timeout");
         } else {
           console.log(
@@ -722,7 +737,7 @@ class GameService {
 
   async completeRound(gameId, updates) {
     const game = this.gameStateManager.getGame(gameId);
-
+    // console.log(`[completeRound] GSM game: ${JSON.stringify(game)}`);
     if (
       !this.validateStateTransition(
         game.state,

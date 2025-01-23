@@ -50,6 +50,13 @@ class GameStateManager {
 
   updateGame(gameId, updates) {
     const game = this.activeGames.get(gameId);
+    console.log(``);
+    console.log(
+      `[GSM updateGame] Before update game: ${JSON.stringify(
+        game
+      )}, passed state: ${updates.state} `
+    );
+
     if (!game) {
       throw new Error("Game not found");
     }
@@ -87,6 +94,13 @@ class GameStateManager {
     }
 
     this.activeGames.set(gameId, updatedGame);
+
+    console.log(
+      `[GSM updateGame] After update game: ${JSON.stringify(
+        this.activeGames.get(gameId)
+      )}`
+    );
+
     return { ...updatedGame };
   }
 

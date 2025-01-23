@@ -15,12 +15,17 @@ const createStateValidationMiddleware = (gameService) => {
       return next(); // Skip validation if no gameId (for create-game, etc.)
     }
 
-    console.log(`Action Name: ${actionName}`);
+    console.log(`[createStateValidationMiddleware] Action Name: ${actionName}`);
 
     try {
       await gameService.validateApiCall(gameId, actionName);
       // Add current state to request object for use in routes
+
       req.gameState = gameService.getGameState(gameId);
+      console.log(
+        `[createStateValidationMiddleware] gameState: ${req.gameState}`
+      );
+
       next();
     } catch (error) {
       const currentState = gameService.getGameState(gameId);

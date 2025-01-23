@@ -46,6 +46,9 @@ export const useGameInitialization = (
       const levelData = await startLevel(playerIdentifier, gameId);
       setCurrentState("LEVEL_STARTED");
 
+      console.log(
+        `[internalInitializeLevel] levelData: ${JSON.stringify(levelData)}`
+      );
       const config: GameConfig = {
         startTime: levelData.startTime,
         duration: levelData.duration,

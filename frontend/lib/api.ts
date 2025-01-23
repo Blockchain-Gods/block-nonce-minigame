@@ -55,7 +55,7 @@ export const initializeSocket = () => {
     });
 
     socket.on("gameState", (data: GameStateData) => {
-      console.log("Received gameState:", data);
+      // console.log("Received gameState:", data);
       if (data.state && data.validActions) {
         gameStateManager.updateState(data.state, data.validActions);
       }
@@ -64,7 +64,7 @@ export const initializeSocket = () => {
     socket.on(
       "stateChanged",
       (data: { newState: string; validActions: string[] }) => {
-        console.log("State changed:", data);
+        // console.log("State changed:", data);
         if (data.newState && data.validActions) {
           gameStateManager.updateState(data.newState, data.validActions);
         }
@@ -98,9 +98,9 @@ export const waitForValidState = (
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     const currentState = gameStateManager.getCurrentState();
-    console.log(
-      `Waiting for state ${targetState}, current state: ${currentState}`
-    );
+    // console.log(
+    //   `Waiting for state ${targetState}, current state: ${currentState}`
+    // );
 
     if (currentState === targetState) {
       resolve(true);
@@ -117,9 +117,9 @@ export const waitForValidState = (
     }, timeout);
 
     const stateChangeHandler = (newState: string) => {
-      console.log(
-        `State changed to ${newState} while waiting for ${targetState}`
-      );
+      // console.log(
+      //   `State changed to ${newState} while waiting for ${targetState}`
+      // );
       if (newState === targetState) {
         clearTimeout(timeoutId);
         gameStateManager.removeStateChangeListener(stateChangeHandler);
@@ -198,12 +198,12 @@ export const setupLevelEndListener = (
   callback: (data: any) => void
 ) => {
   if (socket) {
-    console.log("Setting up level end listener");
     // Remove any existing listeners to prevent duplicates
     socket.off("levelEnded");
 
+    console.log("Setting up level end listener");
     socket.on("levelEnded", (data) => {
-      console.log("Level ended event received:", data);
+      console.log("Level ended event received:", JSON.stringify(data));
       // Update game state manager with new state
       if (data.state && data.validActions) {
         gameStateManager.updateState(data.state, data.validActions);
@@ -239,7 +239,16 @@ export const startLevel = async (
         address,
       }
     );
-    console.log("Level started successfully");
+
+    const data: GameConfig = response.data;
+    if (data.state && data.validActions) {
+      gameStateManager.updateState(data.state, data.validActions);
+    }
+    console.log(
+      `[startLevel] GSM state updated with response data: ${JSON.stringify(
+        gameStateManager.getCurrentState()
+      )}`
+    );
     return response.data;
   } catch (error) {
     if (error instanceof ApiError) {
@@ -316,6 +325,20 @@ export const endLevel = async (gameId: string, address: string) => {
   }
 };
 
+export const setupRoundCompleteListener = (
+  gameId: string,
+  onRoundComplete: (data: GameEndData) => void
+) => {
+  if (socket) {
+    socket.on("roundComplete", (data: GameEndData) => {
+      console.log("Game ended");
+      if (data.gameId === gameId) {
+        onRoundComplete(data);
+      }
+    });
+  }
+};
+
 export const setupGameEndListener = (
   gameId: string,
   onGameEnd: (data: GameEndData) => void
@@ -332,6 +355,12 @@ export const setupGameEndListener = (
 
 export const cleanupGameListeners = (gameId: string) => {
   if (socket) {
+    console.log(`[cleanupGameListeners] sockets: ${socket}`);
+
+    socket.off("gameState");
+    socket.off("stateChanged");
+    socket.off("levelEnded");
+    socket.off("roundComplete");
     socket.off("gameEnded");
     // Optionally leave the room
     socket.emit("leaveGame", gameId);
