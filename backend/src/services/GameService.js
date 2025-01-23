@@ -341,6 +341,14 @@ class GameService {
     const isGameComplete =
       isRoundComplete && game.currentRound >= this.GAME_CONFIG.MAX_ROUNDS;
 
+    const currentRoundStats = [...(game.roundStats || [])];
+    currentRoundStats.push(levelResult);
+    // console.log(
+    //   `Current round stats after adding level: ${JSON.stringify(
+    //     currentRoundStats
+    //   )}`
+    // );
+
     // First update the game state to LEVEL_ENDED
     // await this.updateGameWithStateValidation(gameId, {
     //   isEnded: true,
@@ -357,6 +365,8 @@ class GameService {
       state: nextState,
     };
 
+    console.log(`[endLevel] level result: ${JSON.stringify(levelResult)}`);
+
     // Handle round/game completion
     if (isGameComplete) {
       console.log(`[endLevel] isGameComplete condition met`);
@@ -367,6 +377,17 @@ class GameService {
       nextState = this.VALID_STATES.GAME_COMPLETE;
     } else if (isRoundComplete) {
       console.log(`[endLevel] isRoundComplete condition met`);
+      console.log(
+        `[endLevel] round stats: ${JSON.stringify(initialUpdates.roundStats)}`
+      );
+
+      const roundUpdates = {
+        ...initialUpdates,
+        state: this.VALID_STATES.ROUND_COMPLETE,
+        currentLevel: 1,
+        currentRound: game.currentRound + 1,
+      };
+      // console.log(`[endLevel] Pre-completeRound updates:`, roundUpdates);
 
       await this.completeRound(gameId, {
         ...initialUpdates,
@@ -383,6 +404,11 @@ class GameService {
         currentLevel: game.currentLevel + 1,
       });
     }
+
+    const updatedGame = this.gameStateManager.getGame(gameId);
+    console.log(
+      `Updated game stats: ${JSON.stringify(updatedGame.roundStats)}`
+    );
 
     // Emit events
     this.io.to(gameId).emit("stateChanged", {
@@ -737,7 +763,8 @@ class GameService {
 
   async completeRound(gameId, updates) {
     const game = this.gameStateManager.getGame(gameId);
-    // console.log(`[completeRound] GSM game: ${JSON.stringify(game)}`);
+    console.log(`[completeRound] Updates:`, updates);
+
     if (
       !this.validateStateTransition(
         game.state,
@@ -749,16 +776,26 @@ class GameService {
       );
     }
 
-    // Update game state with round completion
-    await this.updateGameWithStateValidation(gameId, {
+    const roundUpdates = {
       ...updates,
       state: this.VALID_STATES.ROUND_COMPLETE,
-    });
+    };
+
+    // Update game state with round completion
+    const updatedGame = await this.updateGameWithStateValidation(
+      gameId,
+      roundUpdates
+    );
+
+    // console.log(
+    //   `[completeRound] After update - roundStats:`,
+    //   updatedGame.roundStats
+    // );
 
     const roundStats = {
       round: game.currentRound,
       totalScore: updates.totalScore,
-      levels: game.roundStats,
+      levels: updatedGame.roundStats,
     };
 
     this.io.to(gameId).emit("roundComplete", {
