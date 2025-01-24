@@ -25,6 +25,7 @@ target
 .cargo
 
 # Next.js (frontend)
+.next/
 /.next/
 /out/
 /build
