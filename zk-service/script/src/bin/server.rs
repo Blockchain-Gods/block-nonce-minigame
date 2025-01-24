@@ -241,19 +241,29 @@ async fn verify_guess_full(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let app_state = web::Data::new(AppState {
-        secret: Mutex::new(None),
-    });
+    // Get port from environment variable or use default
+    let port = env::var("PORT")
+        .unwrap_or_else(|_| "8000".to_string())
+        .parse::<u16>()
+        .expect("PORT must be a number");
+
+    // Get host from environment or use default
+    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+
+    println!("Starting server at {}:{}", host, port);
 
     HttpServer::new(move || {
         App::new()
-            .app_data(app_state.clone())
+            .app_data(web::Data::new(AppState {
+                secret: Mutex::new(None),
+            }))
             .route("/set-secret", web::post().to(set_secret))
-            // .route("/verify-guess", web::post().to(verify_guess))
             .route("/verify-guess/local", web::post().to(verify_guess_local))
             .route("/verify-guess/full", web::post().to(verify_guess_full))
+            // Add a health check endpoint
+            .route("/health", web::get().to(|| async { "OK" }))
     })
-    .bind("127.0.0.1:8000")?
+    .bind(format!("{}:{}", host, port))?
     .run()
     .await
 }
