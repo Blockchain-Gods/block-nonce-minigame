@@ -1,4 +1,4 @@
-import { LevelStat, RoundStats, RoundSummary } from "@/types/game";
+import { GameSummary, LevelStat, RoundStats, RoundSummary } from "@/types/game";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -20,16 +20,17 @@ export function cn(...inputs: ClassValue[]) {
 //   };
 // };
 
-export const calculateDisplayStats = (roundSummary: RoundSummary) => {
-  const totalScore = roundSummary.totalScore;
-  const { totalBugsFound, totalPossibleBugs } =
-    roundSummary.roundStats.levels.reduce(
-      (acc, level) => ({
-        totalBugsFound: acc.totalBugsFound + level.bugsFound,
-        totalPossibleBugs: acc.totalPossibleBugs + level.totalBugs,
-      }),
-      { totalBugsFound: 0, totalPossibleBugs: 0 }
-    );
+export const calculateDisplayStats = (
+  totalScore: number,
+  levelStats: LevelStat[]
+) => {
+  const { totalBugsFound, totalPossibleBugs } = levelStats.reduce(
+    (acc, level) => ({
+      totalBugsFound: acc.totalBugsFound + level.bugsFound,
+      totalPossibleBugs: acc.totalPossibleBugs + level.totalBugs,
+    }),
+    { totalBugsFound: 0, totalPossibleBugs: 0 }
+  );
   const accuracy = parseFloat(
     ((totalBugsFound / totalPossibleBugs) * 100).toFixed(2)
   );

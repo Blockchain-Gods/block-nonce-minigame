@@ -13,7 +13,7 @@ class GameService {
       MAX_GRID_SIZE: 16, //change back to 16
       GAME_DURATION: 5000, // 35 seconds
       LEVELS_PER_ROUND: 2,
-      MAX_ROUNDS: 3,
+      MAX_ROUNDS: 1,
 
       // Difficulty increases with each level
       DIFFICULTY_SCALING: {
@@ -814,24 +814,32 @@ class GameService {
       );
     }
 
-    // Add final game completion flags
+    // const gameStats = {
+    //   totalRounds: game.currentRound,
+    //   finalScore: updates.totalScore,
+    //   roundStats: [...(game.roundStats || [])],
+    //   totalPlayTime: Date.now() - game.startTime,
+    // };
+
     const finalUpdates = {
       ...updates,
       gameComplete: true,
-      finalScore: updates.totalScore,
+      // finalScore: updates.totalScore,
       state: this.VALID_STATES.GAME_COMPLETE,
     };
 
-    // Update final game state
-    await this.updateGameWithStateValidation(gameId, finalUpdates);
+    // console.log(`[completeGame] finalUpdates:`, finalUpdates);
 
-    // Calculate final game statistics
-    const gameStats = {
-      totalRounds: game.currentRound,
-      finalScore: updates.totalScore,
-      roundStats: game.roundStats,
-      totalPlayTime: Date.now() - game.startTime,
-    };
+    // Update final game state
+    // await this.updateGameWithStateValidation(gameId, finalUpdates);
+
+    // // Calculate final game statistics
+    // const gameStats = {
+    //   totalRounds: game.currentRound,
+    //   finalScore: updates.totalScore,
+    //   roundStats: game.roundStats,
+    //   totalPlayTime: Date.now() - game.startTime,
+    // };
 
     // For web3 users, verify the final score
     if (!game.address.startsWith("guest_")) {
@@ -847,13 +855,16 @@ class GameService {
         gameStats.verificationError = error.message;
       }
     }
+
+    await this.updateGameWithStateValidation(gameId, finalUpdates);
+
     console.log("Socket emitting gameComplete event");
     // Emit game completion event
 
     this.io.to(gameId).emit("gameComplete", {
       gameId,
-      gameStats,
-      finalScore: updates.totalScore,
+      gameStats: finalUpdates.roundStats,
+      finalScore: finalUpdates.totalScore,
       state: this.VALID_STATES.GAME_COMPLETE,
       validActions: this.getValidActions(this.VALID_STATES.GAME_COMPLETE),
     });

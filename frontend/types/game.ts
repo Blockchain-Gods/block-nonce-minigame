@@ -77,6 +77,14 @@ export interface PlayerStats {
   highestRound: number;
 }
 
+export interface GameSummary {
+  gameId: string;
+  gameStats: LevelStat[];
+  finalScore: number;
+  state: ValidState;
+  validActions: string;
+}
+
 export interface GameEndData {
   success: boolean;
   gameId: string;

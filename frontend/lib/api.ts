@@ -9,6 +9,7 @@ import {
   StateValidationError,
   GameStateData,
   RoundSummary,
+  GameSummary,
 } from "@/types/game";
 import axios, { AxiosError } from "axios";
 import { io, Socket } from "socket.io-client";
@@ -79,7 +80,7 @@ export const initializeSocket = () => {
 
     // debug event listner
     socket.onAny((eventName, ...args) => {
-      console.log(`Received socket event "${eventName}":`, args);
+      // console.log(`Received socket event "${eventName}":`, args);
     });
 
     socket.on("disconnect", () => {
@@ -187,7 +188,7 @@ const handleApiError = (error: AxiosError): never => {
 export const joinGameRoom = (gameId: string) => {
   if (socket) {
     socket.emit("joinGame", gameId);
-    console.log(`Joined game room: ${gameId}`);
+    // console.log(`Joined game room: ${gameId}`);
 
     // Request current state immediately after joining
     socket.emit("requestGameState", gameId);
@@ -267,11 +268,11 @@ export const clickCell = async (
   try {
     const currentState = gameStateManager.getCurrentState();
     const validActions = gameStateManager.getValidActions();
-    console.log(`[clickCell] Attempting click with state:`, {
-      currentState,
-      validActions,
-      position,
-    });
+    // console.log(`[clickCell] Attempting click with state:`, {
+    //   currentState,
+    //   validActions,
+    //   position,
+    // });
 
     if (!gameStateManager.isActionValid("handleClick")) {
       const error = new ApiError(
@@ -304,7 +305,7 @@ export const clickCell = async (
 export const endLevel = async (gameId: string, address: string) => {
   try {
     const currentState = gameStateManager.getCurrentState();
-    console.log("Attempting to end level. Current state:", currentState);
+    // console.log("Attempting to end level. Current state:", currentState);
 
     if (!gameStateManager.isActionValid("endLevel")) {
       throw new ApiError(
@@ -340,13 +341,14 @@ export const setupRoundCompleteListener = (
   }
 };
 
-export const setupGameEndListener = (
+export const setupGameCompleteListener = (
   gameId: string,
-  onGameEnd: (data: GameEndData) => void
+  onGameEnd: (data: GameSummary) => void
 ) => {
   if (socket) {
-    socket.on("gameEnded", (data: GameEndData) => {
-      console.log("Game ended");
+    socket.on("gameComplete", (data: GameSummary) => {
+      // console.log("Game ended");
+      // console.log(`[setupGameCompleteListener] data:`, data);
       if (data.gameId === gameId) {
         onGameEnd(data);
       }
@@ -356,7 +358,7 @@ export const setupGameEndListener = (
 
 export const cleanupGameListeners = (gameId: string) => {
   if (socket) {
-    console.log(`[cleanupGameListeners] sockets: ${socket}`);
+    // console.log(`[cleanupGameListeners] sockets: ${socket}`);
 
     socket.off("gameState");
     socket.off("stateChanged");
@@ -535,7 +537,7 @@ export const retryWithStateValidation = async <T>(
       attempts++;
 
       if (error instanceof ApiError && error.code === "INVALID_STATE") {
-        console.log(`Attempt ${attempts}: Waiting for state ${requiredState}`);
+        // console.log(`Attempt ${attempts}: Waiting for state ${requiredState}`);
         try {
           await waitForValidState(requiredState, retryDelay);
           continue;
