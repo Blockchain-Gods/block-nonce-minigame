@@ -91,23 +91,23 @@ const GridGame: React.FC<GridGameProps> = ({
 
   const handleCellClick = useCallback(
     async (x: number, y: number) => {
-      if (isProcessing) return; // Prevent multiple clicks while processing
-
+      if (isProcessing) return;
       const cellKey = `${x},${y}`;
-      if (revealedCells.has(cellKey)) return; // Cell already revealed
+      if (revealedCells.has(cellKey)) return;
+
+      setIsProcessing(true);
+      // Update UI immediately
+      const newSet = new Set(revealedCells);
+      newSet.add(cellKey);
+      setRevealedCells(newSet);
 
       try {
-        setIsProcessing(true);
-
-        // Call the onCellReveal prop with the position
+        // Handle server communication asynchronously
         await onCellReveal({ x, y });
-
-        // Update local state only after successful API call
-        const newSet = new Set(revealedCells);
-        newSet.add(cellKey);
-        setRevealedCells(newSet);
       } catch (error) {
-        console.error("Error revealing cell:", error);
+        // Rollback on error
+        newSet.delete(cellKey);
+        setRevealedCells(newSet);
         toast({
           variant: "destructive",
           title: "Error",
