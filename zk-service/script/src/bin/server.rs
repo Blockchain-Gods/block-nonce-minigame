@@ -253,7 +253,7 @@ async fn main() -> std::io::Result<()> {
             .route("/verify-guess/local", web::post().to(verify_guess_local))
             .route("/verify-guess/full", web::post().to(verify_guess_full))
     })
-    .bind("127.0.0.1:8080")?
+    .bind("127.0.0.1:8000")?
     .run()
     .await
 }
