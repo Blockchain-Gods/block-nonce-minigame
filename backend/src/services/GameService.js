@@ -389,12 +389,7 @@ class GameService {
       };
       // console.log(`[endLevel] Pre-completeRound updates:`, roundUpdates);
 
-      await this.completeRound(gameId, {
-        ...initialUpdates,
-        state: this.VALID_STATES.ROUND_COMPLETE,
-        currentLevel: 1,
-        currentRound: game.currentRound + 1,
-      });
+      await this.completeRound(gameId, roundUpdates);
       nextState = this.VALID_STATES.ROUND_COMPLETE;
     } else {
       console.log(`[endLevel] else condition met`);

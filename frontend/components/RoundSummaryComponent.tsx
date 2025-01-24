@@ -1,7 +1,7 @@
 import { calculateRoundStats } from "@/lib/utils";
 import { RoundSummaryProps } from "@/types/game";
 
-const RoundSummary: React.FC<RoundSummaryProps> = ({
+const RoundSummaryComponent: React.FC<RoundSummaryProps> = ({
   roundStats,
   onContinue,
 }) => {
@@ -14,7 +14,7 @@ const RoundSummary: React.FC<RoundSummaryProps> = ({
         <div className="space-y-4">
           <div className="text-gray-300">
             <p>Total Score: {totalScore}</p>
-            <p>Average Accuracy: {(averageAccuracy * 100).toFixed(1)}%</p>
+            {/* <p>Average Accuracy: {(averageAccuracy * 100).toFixed(1)}%</p> */}
           </div>
           <div className="space-y-2">
             {roundStats.map((stat, index) => (
@@ -39,4 +39,4 @@ const RoundSummary: React.FC<RoundSummaryProps> = ({
   );
 };
 
-export default RoundSummary;
+export default RoundSummaryComponent;

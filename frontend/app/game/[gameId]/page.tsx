@@ -10,7 +10,7 @@ import { useGameStatePolling } from "@/hooks/useGameStatePolling";
 import { useRemainingTime } from "@/hooks/useRemainingTime";
 import { LoadingComponent } from "@/components/LoadingComponent";
 import { useEffect, useState } from "react";
-import { ApiError, LevelStat, Position } from "@/types/game";
+import { ApiError, LevelStat, Position, RoundSummary } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import {
   cleanupGameListeners,
@@ -40,8 +40,9 @@ import {
 import { useGameCreation } from "@/hooks/useGameCreation";
 import { SwishSpinner } from "@/components/SwishSpinner";
 import Cookies from "js-cookie";
-import RoundSummary from "@/components/RoundSummary";
+// import RoundSummaryComponent from "@/components/RoundSummaryComponent";
 import { Button } from "@/components/ui/button";
+import { calculateDisplayStats } from "@/lib/utils";
 
 export default function GamePage() {
   const { startGuestGame, startWeb3Game, isLoading } = useGameCreation();
@@ -72,7 +73,10 @@ export default function GamePage() {
   const [currentRound, setCurrentRound] = useState(1);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [levelStats, setLevelStats] = useState<LevelStat>();
-  const [roundStats, setRoundStats] = useState<LevelStat[]>([]);
+  const [roundStats, setRoundStats] = useState<{
+    totalScore: number;
+    accuracy: number;
+  }>();
   const [roundHasEnded, setRoundHasEnded] = useState(false);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
 
@@ -136,7 +140,7 @@ export default function GamePage() {
       setCurrentGameState(data.state);
       setValidActions(data.validActions);
       console.log(`Game state updated: ${data.state}`);
-      console.log(`Valid actions: ${data.validActions.join(", ")}`);
+      // console.log(`Valid actions: ${data.validActions.join(", ")}`);
     });
 
     socket.on("stateChanged", (data) => {
@@ -152,24 +156,7 @@ export default function GamePage() {
     });
 
     setupLevelEndListener(gameId, async (data) => {
-      // if (!data || !data.result) {
-      //   console.error("Invalid level end data received");
-      //   return;
-      // }
-
-      // const { result, roundComplete } = data;
-      // setLevelStats(result);
-      // setShowLevelSummary(true);
-      // setIsEnding(true);
-
-      // if (roundComplete) {
-      //   console.log("Round complete");
-      //   setRoundHasEnded(true);
-      //   await waitForValidState("ROUND_COMPLETE");
-      // }
-
-      // setRoundStats((prev) => [...prev, result]);
-      console.log("Level end data received:", JSON.stringify(data));
+      // console.log("Level end data received:", JSON.stringify(data));
       const { state, validActions, isRoundComplete, isGameComplete } = data;
 
       if (isGameComplete) {
@@ -186,13 +173,17 @@ export default function GamePage() {
       }
     });
 
-    setupRoundCompleteListener(gameId, (data) => {
-      console.log(
-        "[setupRoundCompleteListener] Round end data received:",
-        JSON.stringify(data)
-      );
+    setupRoundCompleteListener(gameId, (data: RoundSummary) => {
+      // console.log(
+      //   "[useEffect setupRoundCompleteListener] Round end data received:",
+      //   JSON.stringify(data)
+      // );
       setShowLevelSummary(true);
       setShowRoundSummary(true);
+
+      const displayStats = calculateDisplayStats(data);
+      console.log(`[useEffect] Level Stats: `, data.roundStats.levels);
+      setRoundStats(displayStats);
     });
 
     setupGameEndListener(gameId, (data) => {
@@ -210,6 +201,7 @@ export default function GamePage() {
     };
   }, [gameId]);
 
+  console.log(`[outside useEffect] Round stats: `, roundStats);
   // console.log(
   //   `Level Stats outside useEffect: \n ${JSON.stringify(levelStats)}`
   // );
@@ -266,7 +258,7 @@ export default function GamePage() {
       setShowRoundSummary(false);
       setRoundHasEnded(false);
       setShowLevelSummary(false);
-      setRoundStats([]);
+      setRoundStats({ totalScore: 0, accuracy: 0 });
       setIsEnding(false);
       await initializeNewGame();
     } catch (error) {
@@ -301,14 +293,14 @@ export default function GamePage() {
 
   const handleCellReveal = async (position: Position) => {
     if (!playerIdentifier || !gameId) return;
-    // if (!validActions.includes("handleClick")) {
-    //   toast({
-    //     variant: "destructive",
-    //     title: "Invalid Action",
-    //     description: "Cannot click cells in current state",
-    //   });
-    //   return;
-    // }
+    if (!validActions.includes("handleClick")) {
+      toast({
+        variant: "destructive",
+        title: "Invalid Action",
+        description: "Cannot click cells in current state",
+      });
+      return;
+    }
 
     try {
       await clickCell(gameId, position, playerIdentifier);
@@ -451,87 +443,105 @@ export default function GamePage() {
             </AlertDialogTitle>
 
             <AlertDialogDescription className="text-lg text-center">
-              <span className="text-[#5cffb1] my-2">
-                You got {levelStats?.bugsFound || 0}{" "}
-                {levelStats?.bugsFound === 1 ? " bug" : " bugs"}
+              <span className=" my-2">
+                You got{" "}
+                <span className="text-[#5cffb1]">
+                  {levelStats?.bugsFound || 0}{" "}
+                  {levelStats?.bugsFound === 1 ? " bug" : " bugs"}
+                </span>
               </span>
               <br />
-
-              {verificationInProg ? (
-                <>
-                  <span>Verifying locally...</span>
-
-                  <SwishSpinner />
-                </>
-              ) : proofIsVerified ? (
-                <>
-                  {levelStats?.bugsFound == levelStats?.totalBugs ? (
-                    <span className="text-[#5cffb1]">
-                      You got all the bugs!
-                    </span>
-                  ) : (
-                    <span className="text-[#ff006e]">
-                      You didn't get all the bugs :(
-                    </span>
-                  )}
-                  {/* <span className="text-[#5cffb1]">You got all the bugs!</span> */}
-                  {!isFullVerifying && !fullVerificationResult && (
-                    <div className="mt-4">
-                      <button
-                        onClick={handleFullVerification}
-                        className="bg-[#5b23d4]/50 text-white/50 inset-0  transition-colors rounded-md text-sm font-medium h-10 px-4 py-2"
-                        // disabled={isFullVerifying}
-                        disabled
-                      >
-                        Verify On-Chain*
-                      </button>
-                      <p className="text-xs py-2">
-                        *This could take over a few minutes
-                      </p>
-                    </div>
-                  )}
-                  {isFullVerifying && (
-                    <>
-                      <div className="mt-2">Verifying on-chain...</div>
-                      <SwishSpinner />
-                    </>
-                  )}
-                  {fullVerificationResult && (
-                    <div className="mt-2">
-                      {fullVerificationResult.success ? (
-                        <span className="text-[#5cffb1]">
-                          Verified on-chain successfully!
-                        </span>
-                      ) : (
-                        <span className="text-[#ff006e]">
-                          On-chain verification failed
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <span className="text-[#ff006e]">
-                  You didn't get all the bugs :(
-                </span>
-              )}
-              {showRoundSummary && <span>{JSON.stringify(roundStats)}</span>}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="text-center border-t pt-5">
+            {showRoundSummary && (
+              <>
+                <h2 className="text-2xl font-bold mb-4 ">Round Stats</h2>
+                <div>
+                  <span>
+                    Total Score:{" "}
+                    <span className="text-[#5cffb1] font-bold">
+                      {JSON.stringify(roundStats?.totalScore)}
+                    </span>
+                  </span>
+                  <br />
+                  <span>
+                    Accuracy:{" "}
+                    <span className="text-[#5cffb1] font-bold">
+                      {JSON.stringify(roundStats?.accuracy)}
+                    </span>
+                  </span>
+                </div>
+              </>
+            )}
+            {verificationInProg ? (
+              <>
+                <span>Verifying locally...</span>
+
+                <SwishSpinner />
+              </>
+            ) : proofIsVerified ? (
+              <>
+                {/* <span className="text-[#5cffb1]">You got all the bugs!</span> */}
+                {!isFullVerifying && !fullVerificationResult && (
+                  <div className="mt-4">
+                    <button
+                      onClick={handleFullVerification}
+                      className="bg-[#5b23d4]/50 text-white/50 inset-0  transition-colors rounded-md text-sm font-medium h-10 px-4 py-2"
+                      // disabled={isFullVerifying}
+                      disabled
+                    >
+                      Verify On-Chain*
+                    </button>
+                    <p className="text-xs py-2">
+                      *This could take over a few minutes
+                    </p>
+                  </div>
+                )}
+                {/* {levelStats?.bugsFound == levelStats?.totalBugs ? (
+                  <span className="text-[#5cffb1]">You got all the bugs!</span>
+                ) : (
+                  <span className="text-[#ff006e]">
+                    You didn't get all the bugs :(
+                  </span>
+                )} */}
+
+                {isFullVerifying && (
+                  <>
+                    <div className="mt-2">Verifying on-chain...</div>
+                    <SwishSpinner />
+                  </>
+                )}
+                {fullVerificationResult && (
+                  <div className="mt-2">
+                    {fullVerificationResult.success ? (
+                      <span className="text-[#5cffb1]">
+                        Verified on-chain successfully!
+                      </span>
+                    ) : (
+                      <span className="text-[#ff006e]">
+                        On-chain verification failed
+                      </span>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className="text-[#ff006e]">
+                You didn't get all the bugs :(
+              </span>
+            )}
+          </div>
           {roundHasEnded ? (
             <>
-              <Button onClick={() => setShowRoundSummary(true)}>
+              {/* <Button onClick={() => setShowRoundSummary(true)}>
                 Show Epoch Stats
-              </Button>
+              </Button> */}
 
               <AlertDialogFooter className="m-auto">
                 <AlertDialogAction
                   className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
-                  onClick={
-                    roundHasEnded
-                      ? handleContinueToNextRound
-                      : handleContinueToNextLevel
-                  }
+                  onClick={handleContinueToNextRound}
                   disabled={verificationInProg || isFullVerifying}
                 >
                   {isLoading
@@ -546,11 +556,7 @@ export default function GamePage() {
             <AlertDialogFooter className="m-auto">
               <AlertDialogAction
                 className="bg-[#beb8db] text-[#5b23d4] hover:bg-transparent hover:border hover:border-[#5b23d4]"
-                onClick={
-                  roundHasEnded
-                    ? handleContinueToNextRound
-                    : handleContinueToNextLevel
-                }
+                onClick={handleContinueToNextLevel}
                 disabled={verificationInProg || isFullVerifying}
               >
                 {isLoading
@@ -566,7 +572,7 @@ export default function GamePage() {
       {/* Round Summary Dialog */}
 
       {/* {showRoundSummary && (
-        <RoundSummary
+        <RoundSummaryComponent
           roundStats={roundStats}
           onContinue={handleContinueToNextRound}
         />

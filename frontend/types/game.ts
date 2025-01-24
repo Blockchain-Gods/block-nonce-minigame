@@ -106,9 +106,18 @@ export interface LevelStat {
 
 export interface RoundStats {
   round: number;
-  levelStats: LevelStat[];
   totalScore: number;
-  averageAccuracy: number;
+  levels: LevelStat[];
+  averageAccuracy?: number;
+}
+
+export interface RoundSummary {
+  gameId: string;
+  roundStats: RoundStats;
+  nextRound: number;
+  totalScore: number;
+  state: ValidState;
+  validActions: string;
 }
 
 export interface RoundSummaryProps {

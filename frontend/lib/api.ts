@@ -8,6 +8,7 @@ import {
   ApiError,
   StateValidationError,
   GameStateData,
+  RoundSummary,
 } from "@/types/game";
 import axios, { AxiosError } from "axios";
 import { io, Socket } from "socket.io-client";
@@ -327,11 +328,11 @@ export const endLevel = async (gameId: string, address: string) => {
 
 export const setupRoundCompleteListener = (
   gameId: string,
-  onRoundComplete: (data: GameEndData) => void
+  onRoundComplete: (data: RoundSummary) => void
 ) => {
   if (socket) {
-    socket.on("roundComplete", (data: GameEndData) => {
-      console.log("Game ended");
+    socket.on("roundComplete", (data: RoundSummary) => {
+      // console.log(`[setupRoundCompleteListener] data:`, data);
       if (data.gameId === gameId) {
         onRoundComplete(data);
       }
@@ -372,7 +373,7 @@ export const createGame = async (
 ): Promise<GameResponse> => {
   try {
     const { address } = getPlayerIdentifier(playerAddress);
-    console.log(`Creating a game FE with address: ${address}`);
+    // console.log(`Creating a game FE with address: ${address}`);
     const response = await apiClient.post<GameResponse>("/create-game", {
       address,
     });
