@@ -586,7 +586,7 @@ export default function GamePage() {
                   if (gameHasEnded) {
                     router.push("/");
                   } else {
-                    handleContinueToNextLevel;
+                    handleContinueToNextLevel();
                   }
                 }}
                 disabled={verificationInProg || isFullVerifying}

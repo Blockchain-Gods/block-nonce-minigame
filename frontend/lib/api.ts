@@ -203,9 +203,9 @@ export const setupLevelEndListener = (
     // Remove any existing listeners to prevent duplicates
     socket.off("levelEnded");
 
-    console.log("Setting up level end listener");
+    // console.log("Setting up level end listener");
     socket.on("levelEnded", (data) => {
-      console.log("Level ended event received:", JSON.stringify(data));
+      // console.log("Level ended event received:", JSON.stringify(data));
       // Update game state manager with new state
       if (data.state && data.validActions) {
         gameStateManager.updateState(data.state, data.validActions);
